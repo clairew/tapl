@@ -1,0 +1,16 @@
+name: tapl
+version: 0.1.0.0
+dependencies:
+  - base >= 4.7 && < 5
+  - QuickCheck
+  - HUnit
+
+library:
+  source-dirs: src
+
+executables:
+  tapl-exe:
+    main: Main.hs
+    source-dirs: app
+    dependencies:
+    - tapl

@@ -1,3 +1,11 @@
+module ArithmeticExpr (
+    Term(..),
+    isNumericVal,
+    isVal,
+    eval1,
+    eval2
+) where 
+
 data Term = 
     TTrue 
     | TFalse 
@@ -23,7 +31,10 @@ isVal _ = False
 eval1 :: Term -> Term
 eval1 (TIf TTrue t2 t3) = t2
 eval1 (TIf TFalse t2 t3) = t3
-eval1 (TIf t1 t2 t3) = (\t1' -> TIf t1' t2 t3) <$>eval1 t1
+eval1 (TIf t1 t2 t3) = case eval1 t1 of 
+    t1' -> (TIf t1' t2 t3)
+    _ -> TWrong
+-- eval1 (TIf t1 t2 t3) = (\t1' -> TIf t1' t2 t3) <$>eval1 t1
 {- case eval1 t1 of 
     Just t1' -> Just (TIf t1' t2 t3)
     Nothing -> Nothing
@@ -41,7 +52,7 @@ eval1 (TIsZero (TSucc nv1)) | isNumericVal nv1 = TFalse
 eval1 (TIsZero t1) = case eval1 t1 of 
     t1' -> TIsZero t1'
     _ -> TWrong 
-eval1 _ = Nothing
+eval1 _ = TWrong
 
 -- big step version -- 
 eval2 (TIf t1 t2 t3) = case (eval2 t1, eval2 t2, eval2 t3) of 
@@ -61,4 +72,5 @@ eval2 (TIsZero t1) = case (eval2 t1) of
     (t1') -> (TIsZero t1') 
     _ -> TWrong 
 
- 
+
+
