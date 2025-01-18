@@ -1,20 +1,20 @@
 module UntypedLC where 
+import qualified Data.Set as Set
 
 data Term = Var String | Lam String Term | App Term Term deriving (Show, Eq) 
 
--- I combinator
-i = Lam "x" (Var "x")
--- K combinator
-k = Lam "x" (Lam "y" (Var "x"))
 -- S combinator
 s = Lam "x" (Lam "y" (Lam "z"
     (App
         (App (Var "x") (Var "z"))
         (App (Var "y") (Var "z")))))
+-- K combinator
+k = Lam "x" (Lam "y" (Var "x"))
+-- I combinator
+i = Lam "x" (Var "x")
 -- Omega
 omega = Lam "x" (App (Var "x") (Var "x"))
 
--- 
 alphaConvert :: String -> String -> Term -> Term 
 alphaConvert fromString toString (Var x) = if fromString == x then Var toString else Var x 
 alphaConvert fromString toString (Lam v t) = if fromString == v then Lam toString $ alphaConvert fromString toString t else Lam v $ alphaConvert fromString toString t 
@@ -28,7 +28,7 @@ substitute0 x s (Lam v t) = Lam v $ substitute0 x s t
 substitute0 x s (App t1 t2) = App (substitute0 x s t1) (substitute0 x s t2)
 
 -- exploring why substitute0 doesn't work 
--- -
+-- 
 -- [x -> (Lam z.zw)](Lam y.x) = Lam y.Lam z.zw 
 -- example = Lam "y" (Var "x")
 -- replace = Lam "z" (App (Var "z") (Var "w"))
@@ -44,4 +44,50 @@ substitute0 x s (App t1 t2) = App (substitute0 x s t1) (substitute0 x s t2)
 -- Lam "x" (Var "y")
 -- this breaks because identify function should be the same regardless of the names of bound variables! 
 -- this version doesn't check for free variables or bound variables. 
--- we can replace free variables but can't replace bound variables. 
+-- we can replace free variables but can't replace bound variables.
+
+-- substitution attempt 2, p. 70
+-- differs from first attempt because it stops substitution when it binds to the same variable.  
+substitute1 :: String -> Term -> Term -> Term
+substitute1 x s (Var v) = if x == v then s else Var v
+substitute1 x s (Lam v t) = if v == x then Lam v t else Lam v $ substitute1 x s t
+substitute1 x s (App t1 t2) = App (substitute1 x s t1) (substitute1 x s t2) 
+-- [x -> z](Lam z. x) = Lam z.z
+-- example = Lam "z" (Var "x")
+-- replace = Var "z"
+-- result = substitute1 "x" replace example
+-- ghci> result
+-- Lam "z" (Var "z") -> this is wrong because we end up making Lam z. x into an identity function.
+
+-- in order to avoid variable capture, we need to know what the free variables are! 
+-- given a term, return the free vars  
+freeVars :: Term -> Set.Set String
+freeVars (Var v) = Set.singleton v -- if it's just Var v, return v.
+freeVars (Lam v t) = Set.delete v (freeVars t) -- remove bound variable v, call free vars on its bound term
+freeVars (App t1 t2) = Set.union (freeVars t1) (freeVars t2) -- union of the free variables from t1 and t2
+
+-- but when variable capture happens, we can use an alpha conversion to rename the bound variable. We have to find a fresh variable. This is kind of annoying because I'd have to generate a fresh variable name and keep track of names that are already used - I realize this is why De Bruijn indices are useful.
+
+-- given base variable name and set of variables to avoid, create infinite list of names and take the first one that isn't in the set of variables to avoid.
+freshVar :: String -> Set.Set String -> String
+freshVar x vars = head $ filter (\v -> Set.notMember v vars) $ map (\n -> x ++ replicate n '\'') [1..]
+
+
+-- example = Lam "z" (Var "x")
+-- free = freeVars example
+-- ghci> free
+-- fromList ["x"]
+-- example = Lam "x" (App (Var "x") (Var "y"))
+-- free = freeVars example 
+-- ghci> free 
+-- fromList ["y"]
+-- example = App (Lam "x" (App (Var "x") (Var "y"))) (Var "z") 
+-- free = freeVars example
+-- ghci>free
+-- fromList ["y","z"]
+
+-- finally, the REAL substitution! 
+substitute :: String -> Term -> Term -> Term 
+substitute x s (Var v) = if x == v then s else Var v
+substitute x s (Lam v t) = if v == x then Lam v t else if Set.notMember y (freeVars s) then Lam v $ substitute x s t else (freshVar  
+
