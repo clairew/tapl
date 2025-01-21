@@ -89,5 +89,64 @@ freshVar x vars = head $ filter (\v -> Set.notMember v vars) $ map (\n -> x ++ r
 -- finally, the REAL substitution! 
 substitute :: String -> Term -> Term -> Term 
 substitute x s (Var v) = if x == v then s else Var v
-substitute x s (Lam v t) = if v == x then Lam v t else if Set.notMember y (freeVars s) then Lam v $ substitute x s t else (freshVar  
+substitute x (Var s) (Lam v t) = if v == x then Lam v t else if Set.notMember v (freeVars (Var s)) then Lam v $ substitute x (Var s) t else Lam v $ substitute x (Var (freshVar s (freeVars (Var s)))) t
+substitute x s (App t1 t2) = App (substitute x s t1) (substitute x s t2)
+
+--example = Lam "z" (Var "x")
+--replace = Var "y"
+--result = substitute "x" replace example
+--ghci> result
+--Lam "z" (Var "y")
+
+--example = Lam "x" (Var "x") 
+--replace = Var "y"
+--result = substitute "x" replace example
+--ghci> result
+--Lam "x" (Var "x")
+
+-- putting it all together in evaluation
+
+isVal :: Term -> Bool
+isVal (Var _) = True
+isVal (Lam _ _) = True
+isVal (App _ _) = False
+
+-- one step of evaluation at a time 
+-- implements evaluation rules from Figure 5-3
+eval1 :: Term -> Maybe Term
+eval1 (Var x) = Nothing
+eval1 (Lam x t) = Nothing
+eval1 (App t1 t2) = case eval1 t1 of 
+    Just t1' -> Just (App t1' t2) 
+    Nothing -> case eval1 t2 of
+        Just t2' -> case isVal t1 of
+            True -> Just (App t1 t2')
+            False -> case isVal t2 of
+                True -> case t1 of 
+                    Lam x t12 -> Just (substitute x t2 t12)
+
+-- keeps evaluating using eval1 till normal form 
+eval :: Term -> Term
+eval (Var v)     = Var v
+eval (Lam v t)   = Lam v (eval t)
+eval (App t1 t2) = case eval1 (App t1 t2) of 
+    Nothing -> App t1 t2
+    Just t' -> eval t'
+
+-- a term is in normal form if it can't be reduced further
+isNormalForm :: Term -> Bool
+isNormalForm (Var _) = True -- variables are always in normal form 
+isNormalForm (Lam v t) = isNormalForm t -- for lambdas, need to check if its body is normal 
+isNormalForm (App t1 t2) =  
+
+
+--data DBTerm = DBVar Nat | DBLam DBTerm | DBApp DBTerm DBTerm
+
+
+--toDB :: Term -> DBTerm
+--thoDB (Var v) = DBVar 0
+--toDB Lam v t = DBLam (toDB v) $  
+
+
+
 
