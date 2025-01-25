@@ -1,6 +1,6 @@
 module UntypedLC where 
 import qualified Data.Set as Set
-
+import Data.List (elemIndex)
 data Term = Var String | Lam String Term | App Term Term deriving (Show, Eq) 
 
 -- S combinator
@@ -163,10 +163,36 @@ shift d c (DBApp t1 t2) = DBApp (shift d c t1) (shift d c t2)
 -- ghci> shift 1 0 (DBApp (DBVar 0) (DBVar 1))
 -- DBApp (DBVar 1) (DBVar 2)
 
---toDB :: Term -> DBTerm
---thoDB (Var v) = DBVar 0
---toDB Lam v t = DBLam (toDB v) $  
+-- helper function for getting the indice given a context (list of variable names)
+go :: [String] -> Term -> DBTerm
+go context (Var v) = case elemIndex v context of
+    Just i -> DBVar i
+    Nothing -> DBVar (length context)
+go context (Lam v t) = DBLam $ go context t
+go context (App t1 t2) = DBApp (go context t1) (go context t2)
 
+-- given a named term, convert to de bruijn term
+toDB :: Term -> DBTerm
+toDB (Var v) = go [] (Var v)
+toDB (Lam v t) = DBLam $ go [v] t
+toDB (App t1 t2) = DBApp (toDB t1) (toDB t2) 
 
+-- using figure 6.2.4
+-- substitute variable s with variable number j in the given term
+dbSubst :: Int -> DBTerm -> DBTerm -> DBTerm
+dbSubst j (DBVar s) (DBVar k) = if j == k then (DBVar s) else (DBVar k)
+dbSubst j (DBVar s) (DBLam t) = DBLam $ dbSubst (j+1) (shift 1 0 (DBVar s)) t
+dbSubst j (DBVar s) (DBApp t1 t2) = DBApp (dbSubst j (DBVar s) t1) (dbSubst j (DBVar s) t2)
 
+-- ghci> dbSubst 0 (DBVar 1) (DBVar 1)
+-- DBVar 1
+-- ghci> dbSubst 0 (DBVar 1) (DBVar 0)
+-- DBVar 1
+-- ghci> dbSubst 0 (DBVar 1) (DBLam (DBVar 0))
+-- DBLam (DBVar 0)
+-- ghci> dbSubst 0 (DBVar 1) (DBLam (DBVar 1))
+-- DBLam (DBVar 2)
+-- ghci> dbSubst 0 (DBVar 1) (DBApp (DBVar 0) (DBVar 2))
+-- DBApp (DBVar 1) (DBVar 2)
 
+-- fromDB :: DBTerm -> Term 
