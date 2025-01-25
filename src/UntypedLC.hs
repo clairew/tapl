@@ -137,11 +137,31 @@ eval (App t1 t2) = case eval1 (App t1 t2) of
 isNormalForm :: Term -> Bool
 isNormalForm (Var _) = True -- variables are always in normal form 
 isNormalForm (Lam v t) = isNormalForm t -- for lambdas, need to check if its body is normal 
-isNormalForm (App t1 t2) =  
+isNormalForm (App (Lam v t) t2) = False
+isNormalForm (App t1 t2) = isNormalForm t1 && isNormalForm t2 
 
 
---data DBTerm = DBVar Nat | DBLam DBTerm | DBApp DBTerm DBTerm
+data DBTerm = DBVar Int | DBLam DBTerm | DBApp DBTerm DBTerm deriving (Show, Eq)
 
+-- d is current binding depth 
+-- c is how much to shift by 
+shift :: Int -> Int -> DBTerm -> DBTerm
+shift d c (DBVar i) = if i < c then DBVar i else DBVar (i+d)
+shift d c (DBLam t) = DBLam $ shift d (c+1) t
+shift d c (DBApp t1 t2) = DBApp (shift d c t1) (shift d c t2) 
+
+-- ghci> shift 1 0 (DBVar 0)
+-- DBVar 1
+
+-- don't shift bound variables
+-- ghci> shift 1 1 (DBVar 0)
+-- DBVar 0
+
+-- ghci> shift 2 0 (DBLam (DBVar 1))
+-- DBLam (DBVar 3)
+
+-- ghci> shift 1 0 (DBApp (DBVar 0) (DBVar 1))
+-- DBApp (DBVar 1) (DBVar 2)
 
 --toDB :: Term -> DBTerm
 --thoDB (Var v) = DBVar 0
