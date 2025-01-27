@@ -15,3 +15,20 @@ Implementing chapters from Types and Programming Languages and CIS6700 to learn 
 - [ ] Implement evaluation orders
     - [ ] Leftmost outermost and weak LO
     - [ ] Leftmost innermost and weak LI 
+
+## 1/27 lecture 
+- [ ] Implement Church numerals
+    - [ ] `zero`, `one`, `succ` 
+    - [ ] `add`, `mult`, `exponent`, `pred` 
+- [ ] Implement Scott numerals
+    - [ ] Compare `pred` implementation between Church and Scott. 
+- [ ] Church-Rosser 
+    - [ ] Implement parallel reduction
+    - [ ] Demonstrate confluence/non-confluence 
+    - [ ] Show why we need parallel reduction 
+
+## 1/29
+- [ ] Using parallel reduction implementation, implement Takahashi's translation. 
+- [ ] Implement strong and weak normalization 
+- [ ] Newman's Lemma
+- [ ] Bracket abstraction algorithm 
