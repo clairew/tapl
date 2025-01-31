@@ -15,6 +15,49 @@ i = Lam "x" (Var "x")
 -- Omega
 omega = Lam "x" (App (Var "x") (Var "x"))
 
+class Numeral a where
+    fromInt :: Int -> a
+    succNum :: a -> a  
+    predNum :: a -> a
+    addNum :: a -> a -> a
+    multNum :: a -> a -> a
+    expNum :: a -> a -> a
+
+newtype Church = Church Term deriving (Show, Eq) 
+
+instance Numeral Church where 
+    fromInt n = Church (church n)
+--    succNum n = chuchSucc (church n) 
+
+church :: Int -> Term
+church 0 = Lam "f" $ Lam "x" $ Var "x"
+church n = Lam "f" $ Lam "x" $ foldr (\_ t -> App (Var "f") t) (Var "x") [1..n]
+
+churchSucc :: Term -> Term
+churchSucc n = Lam "f" $ Lam "x" $ App (Var "f") (App (App n (Var "f")) (Var "x"))
+
+-- ghci > churchSucc zero
+-- Lam "f" (Lam "x" (App (Var "f") (App (App (Lam "f" (Lam "x" (Var "x"))) (Var "f")) (Var "x"))))
+-- hm.. I should use my eval function! 
+-- eval $ churchSucc zero
+-- Lam "f" (Lam "x" (App (Var "f") (Var "x")))
+-- ghci> eval $ church 1
+-- Lam "f" (Lam "x" (App (Var "f") (Var "x")))
+-- ghci> eval $ churchSucc (church 0)
+-- Lam "f" (Lam "x" (App (Var "f") (Var "x")))
+
+-- for pred, we have to use pairs to get the previous number. Thanks Kleene!
+-- I realize that the K combinator returns the first variable in a pair, so we can use that too.
+
+pair :: Term 
+pair = Lam "x" $ Lam "y" $ Lam "f" $ App (App (Var "f") (Var "x")) (Var "y")
+
+first :: Term 
+first = Lam "p" $ App (Var "p") (Lam "x" $ Lam "y" $ Var "x")
+
+second :: Term
+second = Lam "p" $ App (Var "p") (Lam "x" $ Lam "y" $ Var "y")
+
 alphaConvert :: String -> String -> Term -> Term 
 alphaConvert fromString toString (Var x) = if fromString == x then Var toString else Var x 
 alphaConvert fromString toString (Lam v t) = if fromString == v then Lam toString $ alphaConvert fromString toString t else Lam v $ alphaConvert fromString toString t 
@@ -89,7 +132,14 @@ freshVar x vars = head $ filter (\v -> Set.notMember v vars) $ map (\n -> x ++ r
 -- finally, the REAL substitution! 
 substitute :: String -> Term -> Term -> Term 
 substitute x s (Var v) = if x == v then s else Var v
-substitute x (Var s) (Lam v t) = if v == x then Lam v t else if Set.notMember v (freeVars (Var s)) then Lam v $ substitute x (Var s) t else Lam v $ substitute x (Var (freshVar s (freeVars (Var s)))) t
+substitute x s (Lam v t) = 
+    if v == x then 
+        Lam v t 
+    else if Set.notMember v (freeVars s) then 
+        Lam v $ substitute x s t 
+    else 
+        let fresh = freshVar v (freeVars s) 
+        in Lam fresh $ substitute x s (substitute v (Var fresh) t) 
 substitute x s (App t1 t2) = App (substitute x s t1) (substitute x s t2)
 
 --example = Lam "z" (Var "x")
@@ -116,15 +166,13 @@ isVal (App _ _) = False
 eval1 :: Term -> Maybe Term
 eval1 (Var x) = Nothing
 eval1 (Lam x t) = Nothing
-eval1 (App t1 t2) = case eval1 t1 of 
-    Just t1' -> Just (App t1' t2) 
-    Nothing -> case eval1 t2 of
-        Just t2' -> case isVal t1 of
-            True -> Just (App t1 t2')
-            False -> case isVal t2 of
-                True -> case t1 of 
-                    Lam x t12 -> Just (substitute x t2 t12)
-
+eval1 (App t1 t2) =
+    case (eval1 t1, eval1 t2, t1, isVal t2) of 
+    (Just t1', _, _, _) -> Just (App t1' t2)
+    (Nothing, Just t2', _, _) -> Just (App t1 t2')
+    (Nothing, Nothing, Lam x t12, True) -> Just (substitute x t2 t12)
+    _ -> Nothing
+   
 -- keeps evaluating using eval1 till normal form 
 eval :: Term -> Term
 eval (Var v)     = Var v
@@ -196,3 +244,5 @@ dbSubst j (DBVar s) (DBApp t1 t2) = DBApp (dbSubst j (DBVar s) t1) (dbSubst j (D
 -- DBApp (DBVar 1) (DBVar 2)
 
 -- fromDB :: DBTerm -> Term 
+
+
