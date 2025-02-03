@@ -89,7 +89,7 @@ eval1 (TSucc t1)
 eval1 (TPred (TSucc nv1)) | isNumericVal nv1 = nv1
 eval1 (TPred TZero) = TZero
 eval1 (TPred t1)
-    | isBadBool t1 = TWrong
+    | isBadNat t1 = TWrong
     | otherwise = case eval1 t1 of
     TZero -> TZero
     t1' -> TPred t1'
@@ -122,5 +122,8 @@ eval2 (TIsZero t1) = case (eval2 t1) of
     (t1') -> (TIsZero t1') 
     _ -> TWrong 
 
-
-
+evalMulti :: Term -> Term
+evalMulti t 
+    | isVal t = t
+    | t == TWrong = TWrong
+    | otherwise = evalMulti (eval1 t)
