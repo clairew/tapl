@@ -1,1 +1,29 @@
+# Stack build directory
 .stack-work*
+
+# Cabal build directory
+dist/
+dist-newstyle/
+
+# Stack generated files
+*.hi
+*.o
+*.chi
+*.chs.h
+.stack-work/
+
+# Cabal file (if using hpack/package.yaml)
+# Uncomment this if you're using package.yaml to generate it
+# tapl.cabal
+
+# Haskell language server files
+.hie/
+*.hie
+
+# Common editor/system files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+*~
+
