@@ -137,17 +137,17 @@ divergingTest = App
     (Lam "x" TAns Yes)  -- A function that ignores its argument and returns Yes
     omega
 
-isHereditarilyTerminating :: Term -> Type -> Bool
-isHereditarilyTerminating m typ = case typ of
-    TUnit -> case evalhead m of 
+-- let's not do this.. can't use propositions as types in hs.   
+--isHereditarilyTerminating :: Term -> Type -> Bool
+--isHereditarilyTerminating m typ = case typ of
+{-    TUnit -> case evalhead m of 
         Unit -> True
         _ -> False
     TAns -> case evalhead m of 
         Yes -> True
         No -> True 
         _ -> False 
-isHereditarilyTerminating m (TProd t1 t2) = case m of
+isHereditarilyTerminating m (TProd t1 t2) = case evalhead m of
     Pair m1 m2 -> isHereditarilyTerminating m1 t1 && isHereditarilyTerminating m2 t2 
-    _ -> False
+    _ -> False -}
 
---isHereditarilyTerminating m (TArrow t1 t2) = case m of
