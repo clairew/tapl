@@ -46,3 +46,53 @@ HT_ans(M) iff M →* yes or M →* no
 - By induction, this reduced term must evaluate to yes or no
 ∎
 
+## Given Barendregt's definition of saturated sets, what is the largest staturated set?
+
+# Proof Goal
+Prove that SN is the largest saturated set. 
+
+## Definitions 
+
+### Definition 4.3.1
+1. $\text{SN} = \{M \in \Lambda \mid M \text{ is strongly normalizing}\}$
+
+### Definition 4.3.2
+1. A subset $X \subseteq \text{SN}$ is called saturated if:
+   
+   (a) $\forall n \geq 0$ $\forall R_1,\ldots,R_n \in \text{SN}$ $x\vec{R} \in X$,
+       where $x$ is any term variable;
+   
+   (b) $\forall n \geq 0$ $\forall R_1,\ldots,R_n \in \text{SN}$ $\forall Q \in \text{SN}$
+       
+       $P[x := Q]\vec{R} \in X \Rightarrow (\lambda x.P)Q\vec{R} \in X$
+       
+
+2. $\text{SAT} = \{X \subseteq \Lambda \mid X \text{ is saturated}\}$
+
+### Lemma 4.3.3
+1. $\text{SN} \in \text{SAT}$
+
+## Proof
+
+We will prove that SN is the largest saturated set by showing:
+1. SN is saturated
+2. Every saturated set must be a subset of SN
+3. Therefore, SN must be the largest set. 
+
+### 1: SN is Saturated
+By Lemma 4.3.3.1, we know that $\text{SN} \in \text{SAT}$, which directly tells us that SN is saturated.
+
+### 2: Every Saturated Set is a Subset of SN
+From Definition 4.3.2.1, a saturated set $X$ is defined as "a subset $X \subseteq \text{SN}$" satisfying conditions (a) and (b). Therefore, by definition, any saturated set must be contained within SN.
+
+### 3: SN is the Largest Saturated Set
+
+From **Definition 4.3.2**, any saturated set $X$ must be a subset of $\text{SN}$, meaning:
+
+$X \subseteq \text{SN}, \quad \forall X \in \text{SAT}$.
+
+Since $\text{SN}$ is itself a saturated set (by **Lemma 4.3.3**), it follows that it is the **largest** saturated set, meaning no saturated set can properly contain $\text{SN}$.
+
+Thus, $\text{SN}$ is the largest element in $\text{SAT}$.
+
+$\square$
