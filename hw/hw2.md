@@ -44,7 +44,8 @@ HT_ans(M) iff M →* yes or M →* no
 **Case 3 (Functions):** If M : ans contains function application:
 - For ap(M₁;M₂), by APP-LAM rule and preservation, this reduces to a term still of type ans
 - By induction, this reduced term must evaluate to yes or no
-∎
+
+$\square$
 
 ## Given Barendregt's definition of saturated sets, what is the largest staturated set?
 
