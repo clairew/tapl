@@ -1,6 +1,6 @@
 ## HW 2
 ## Exercise 2 from Bob Harper's How to (Re)Invent Tait's Method
-# **Proof of Hereditary Termination using Negative Formulation**
+# **Proof of Hereditary Termination using Negative Formulation** (WIP)
 # Proof Goal
 
 We prove the **fundamental theorem of hereditary termination**:
@@ -9,8 +9,7 @@ For all M, if Γ ⊢ M : A, then HT_A(M).
 
 where hereditary termination is defined using the **negative formulation**.
 
-# Theorem (Termination with Negative Formulation)
-For closed programs of answer type, we use the following negative formulation of hereditary termination:
+# Termination with Negative Formulation
 
 HT_(A₁×A₂)(M) iff HT_A₁(M·1) and HT_A₂(M·2)
 HT_(A₁→A₂)(M) iff HT_A₁(M₁) implies HT_A₂(ap(M;M₁))
@@ -32,19 +31,29 @@ HT_ans(M) iff M →* yes or M →* no
 - If M₁ →* M₁', then ap(M₁;M₂) →* ap(M₁';M₂)
 
 ## Proof
- We prove that if M : ans is a closed term, then M →* yes or M →* no.
+ By induction on typing derivations. 
+ IH: For any subterm N of M with typing Γ ⊢ N : B, we have HT_B(N).
 
-**Case 1 (Base ans):** If M is yes or no, immediate.
+**Case 1 (Base ans):** If M is yes or no, immediate. Otherwise M reduces to yes or no by induction on subterms.
 
-**Case 2 (Products):** If M : ans contains a product subterm:
-- For projections M·1 or M·2, by LFT-PAIR/RHT-PAIR rules, these reduce to their components
-- By preservation, these components must also be of type ans 
-- By induction on the typing derivation, these components reduce to yes or no
+**Case 2 (Products):** show HT_(A₁×A₂)(M)
+1. HT_A₁(M·1):
+    - By LFT-PAIR, M·1 →* M₁
+    - By induction hypothesis at type A₁, HT_A₁(M₁) holds
 
-**Case 3 (Functions):** If M : ans contains function application:
-- For ap(M₁;M₂), by APP-LAM rule and preservation, this reduces to a term still of type ans
-- By induction, this reduced term must evaluate to yes or no
+2. HT_A₂(M·2):
+    - By RHT-PAIR, M·2 →* M₂
+    - By induction hypothesis at type A₂, HT_A₂(M₂) holds
 
+
+**Case 3 (Functions):** show HT_(A₁→A₂)(M):
+1. ap(λ(x.M);M₁) where HT_A₁(M₁):
+    - By APP-LAM rule: ap(λ(x.M);M₁) → [M₁/x]M
+    - By induction hypothesis at type A₂, HT_A₂([M₁/x]M)
+    - By contextual rules, reductions preserve hereditary termination
+2. ap(ap(M;M₁);M₂):
+    - By contextual rules: If M →* M', then ap(M;M₁) →* ap(M';M₁)
+   - By IH on N₁ and N₂: reduction sequence eventually leads to case 1.
 $\square$
 
 ## Given Barendregt's definition of saturated sets, what is the largest staturated set?
