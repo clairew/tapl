@@ -5,7 +5,10 @@ data Type = TBool
     | TArrow Type Type
     | TUnit
     | TAns
-    | TProd Type Type 
+    | TProd Type Type
+    | TTop
+    | TRecord [(String, Type)]
+    | TArr [(Type, Type)]
     deriving (Show, Eq)
 
 data Term = Var String
@@ -17,6 +20,7 @@ data Term = Var String
           | Pair Term Term 
           | Proj1 Term
           | Proj2 Term
+          | Record [(String, Term)]
           deriving (Show, Eq)
 
 newtype Context = Context [(String, Type)]
@@ -59,6 +63,17 @@ typeOf ctx (Proj1 m1) = case typeOf ctx m1 of
 typeOf ctx (Proj2 m2) = case typeOf ctx m2 of
     Nothing -> Nothing
     Just (TProd _ t2) -> Just t2
+
+isSubtype :: Type -> Type -> Bool
+isSubtype t1 TTop = True 
+isSubtype t1 t2 | t1 == t2 = True
+isSubtype (TRecord fields1) (TRecord fields2) = 
+    all (\(name2, type2) -> 
+        case lookup name2 fields1 of
+            Nothing -> False
+            Just type1 -> isSubtype type1 type2) fields2 
+isSubtype (TArrow s1 t1) (TArrow s2 t2) = (isSubtype s2 s1) && (isSubtype t1 t2)
+isSubtype _ _ = False
 
 freeVars :: Term -> Set.Set String
 freeVars (Var v) = Set.singleton v
@@ -150,4 +165,3 @@ divergingTest = App
 isHereditarilyTerminating m (TProd t1 t2) = case evalhead m of
     Pair m1 m2 -> isHereditarilyTerminating m1 t1 && isHereditarilyTerminating m2 t2 
     _ -> False -}
-

@@ -35,4 +35,8 @@ Implementing chapters from Types and Programming Languages and CIS6700 to learn 
 
 ## Week of 2/3 
 - [ ] Simply typed lambda calculus
-- [ ] Strong normalization 
+- [ ] Strong normalization
+
+## Week of 2/10 
+- [ ] References
+- [ ] Subtyping
