@@ -1,6 +1,7 @@
 module TypedLC where
 import qualified Data.Set as Set
 import Debug.Trace
+import qualified Data.Map as Map
 data Type = TBool 
     | TArrow Type Type
     | TUnit
@@ -9,6 +10,7 @@ data Type = TBool
     | TTop
     | TRecord [(String, Type)]
     | TArr [(Type, Type)]
+    | TRef Type
     deriving (Show, Eq)
 
 data Term = Var String
@@ -21,6 +23,10 @@ data Term = Var String
           | Proj1 Term
           | Proj2 Term
           | Record [(String, Term)]
+          | Ref Term -- ref t
+          | Deref Term -- !t
+          | Assign Term Term -- t:=t
+          | Loc String -- l (store location)
           deriving (Show, Eq)
 
 newtype Context = Context [(String, Type)]
@@ -30,6 +36,16 @@ emptyContext = Context []
 
 extendContext :: String -> Type -> Context -> Context
 extendContext name typ (Context ctx) = Context ((name,typ):ctx)
+
+newtype Store = Store (Map.Map String Term)
+emptyStore :: Store
+emptyStore = Store Map.empty 
+
+extendStore :: String -> Term -> Store -> Store
+extendStore loc val (Store s) = Store (Map.insert loc val s)
+
+lookupStore :: String -> Store -> Maybe Term
+lookupStore loc (Store s) = Map.lookup loc s
 
 lookupType :: String -> Context -> Maybe Type
 lookupType x (Context []) = Nothing
@@ -59,7 +75,6 @@ typeOf ctx (Pair m1 m2) = case typeOf ctx m1 of
 typeOf ctx (Proj1 m1) = case typeOf ctx m1 of
     Nothing -> Nothing
     Just (TProd t1 _) -> Just t1
-
 typeOf ctx (Proj2 m2) = case typeOf ctx m2 of
     Nothing -> Nothing
     Just (TProd _ t2) -> Just t2
@@ -82,6 +97,9 @@ freeVars (App t1 t2) = Set.union (freeVars t1) (freeVars t2)
 
 freshVar :: String -> Set.Set String -> String
 freshVar x vars = head $ filter (\v -> Set.notMember v vars) $ map (\n -> x ++ replicate n '\'') [1..]
+
+freshLoc :: Store -> String 
+freshLoc (Store s) =  head $ filter (\v -> Map.notMember v s) $ map (\n -> "l" ++ replicate n '\'') [1..]
 
 subst :: String  -- variable to replace
       -> Term    -- term to substitute in
@@ -144,13 +162,14 @@ evalhead t = case eval1head $ traceShowId t of
     Nothing -> t 
     Just t' -> evalhead t'
 
-omega = App 
+-- termination example of call by value vs. head reduction
+{-omega = App 
     (Lam "x" TAns (App (Var "x") (Var "x")))
     (Lam "x" TAns (App (Var "x") (Var "x")))
 
 divergingTest = App
     (Lam "x" TAns Yes)  -- A function that ignores its argument and returns Yes
-    omega
+    omega-}
 
 -- let's not do this.. can't use propositions as types in hs.   
 --isHereditarilyTerminating :: Term -> Type -> Bool
@@ -165,3 +184,25 @@ divergingTest = App
 isHereditarilyTerminating m (TProd t1 t2) = case evalhead m of
     Pair m1 m2 -> isHereditarilyTerminating m1 t1 && isHereditarilyTerminating m2 t2 
     _ -> False -}
+
+eval1store :: Term -> Store -> Maybe (Term, Store)
+eval1store (App t1 t2) s = case t1 of
+    Lam x typ t12 | isVal t2 -> Just (subst x t2 t12, s)    
+    _ -> case eval1store t1 s of
+        Just (t1', s') -> Just (App t1' t2, s')
+        Nothing -> case eval1store t2 s of 
+            Just (t2', s') | isVal t1 -> Just (App t1 t2', s')
+            Nothing -> Nothing
+eval1store (Ref v) s | isVal v = let l = freshLoc s
+    in Just (Loc l, extendStore l v s)
+eval1store (Deref t) s = case eval1store t s of
+    Just (Loc l, s') -> case lookupStore l s' of
+        Just v -> Just (v, s') 
+        Nothing -> Nothing
+    Just (_, s') -> Nothing
+    Nothing -> Nothing
+eval1store (Assign t1 t2) s = case eval1store t1 s of
+    Just (Loc l, s') | isVal t2 -> Just (Unit, extendStore l t2 s')
+    Just (_, _) -> Nothing
+eval1store _ s = Nothing
+
