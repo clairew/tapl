@@ -37,6 +37,10 @@ emptyContext = Context []
 extendContext :: String -> Type -> Context -> Context
 extendContext name typ (Context ctx) = Context ((name,typ):ctx)
 
+lookupType :: String -> Context -> Maybe Type
+lookupType x (Context []) = Nothing
+lookupType x (Context ((name,typ):rest)) = if x == name then Just typ else lookupType x (Context rest)
+
 newtype Store = Store (Map.Map String Term)
 emptyStore :: Store
 emptyStore = Store Map.empty 
@@ -47,9 +51,13 @@ extendStore loc val (Store s) = Store (Map.insert loc val s)
 lookupStore :: String -> Store -> Maybe Term
 lookupStore loc (Store s) = Map.lookup loc s
 
-lookupType :: String -> Context -> Maybe Type
-lookupType x (Context []) = Nothing
-lookupType x (Context ((name,typ):rest)) = if x == name then Just typ else lookupType x (Context rest)
+newtype StoreContext = StoreContext {runContext :: Context}
+
+emptyStoreContext :: StoreContext
+emptyStoreContext = StoreContext emptyContext
+
+extendStoreContext :: String -> Type -> StoreContext -> StoreContext
+extendStoreContext name typ (StoreContext ctx) = StoreContext $ extendContext name typ ctx
 
 typeOf :: Context -> Term -> Maybe Type
 typeOf ctx (Var v) = case (lookupType v ctx) of
@@ -78,6 +86,8 @@ typeOf ctx (Proj1 m1) = case typeOf ctx m1 of
 typeOf ctx (Proj2 m2) = case typeOf ctx m2 of
     Nothing -> Nothing
     Just (TProd _ t2) -> Just t2
+
+
 
 isSubtype :: Type -> Type -> Bool
 isSubtype t1 TTop = True 
