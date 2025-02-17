@@ -213,22 +213,38 @@ isHereditarilyTerminating m (TProd t1 t2) = case evalhead m of
     Pair m1 m2 -> isHereditarilyTerminating m1 t1 && isHereditarilyTerminating m2 t2 
     _ -> False -}
 
+inDomain :: String -> Store -> Bool
+inDomain loc (Store s) = Map.member loc s
+
 eval1store :: Term -> Store -> Maybe (Term, Store)
-eval1store (App t1 t2) s = case t1 of
-    Lam x typ t12 | isVal t2 -> Just (subst x t2 t12, s)    
-    _ -> case eval1store t1 s of
+eval1store (App t1 t2) s = 
+    case eval1store t1 s of -- E-APP1 
         Just (t1', s') -> Just (App t1' t2, s')
-        Nothing -> case eval1store t2 s of 
-            Just (t2', s') | isVal t1 -> Just (App t1 t2', s')
-            Nothing -> Nothing
-eval1store (Ref v) s | isVal v = let l = freshLoc s
-    in Just (Loc l, extendStore l v s)
-eval1store (Deref t) s = case eval1store t s of
-    Just (Loc l, s') -> case lookupStore l s' of
-        Just v -> Just (v, s') 
+        Nothing ->
+            if isVal t1 then
+                case eval1store t2 s of -- E-APP2
+                    Just (t2', s') -> Just (App t1 t2', s')
+                    Nothing ->
+                        case t1 of -- E-APPABS 
+                            Lam x typ t12 | isVal t2 -> Just (subst x t2 t12, s)
+                            _ -> Nothing
+            else Nothing
+eval1store (Ref v) s | isVal v = -- E-REFV 
+    let l = freshLoc s
+    in if not (inDomain l s)
+        then Just (Loc l, extendStore l v s)
+        else Nothing
+eval1store (Ref t) s = -- E-REF 
+    case eval1store t s of 
+        Just (t', s') -> Just (Ref t', s')
         Nothing -> Nothing
-    Just (_, s') -> Nothing
-    Nothing -> Nothing
+eval1store (Deref (Loc l)) s = case lookupStore l s of -- E-DEREFLOC 
+        Just v | isVal v -> Just (v, s) 
+        _ -> Nothing
+eval1store (Deref t) s = -- E-DEREF
+    case eval1store t s of
+        Just (t', s') -> Just (Deref t', s')
+        Nothing -> Nothing
 eval1store (Assign t1 t2) s = case eval1store t1 s of
     Just (Loc l, s') | isVal t2 -> Just (Unit, extendStore l t2 s')
     Just (_, _) -> Nothing
