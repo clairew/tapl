@@ -51,13 +51,16 @@ extendStore loc val (Store s) = Store (Map.insert loc val s)
 lookupStore :: String -> Store -> Maybe Term
 lookupStore loc (Store s) = Map.lookup loc s
 
-newtype StoreContext = StoreContext {runContext :: Context}
+newtype StoreContext = StoreContext (Map.Map String Type) 
 
 emptyStoreContext :: StoreContext
-emptyStoreContext = StoreContext emptyContext
+emptyStoreContext = StoreContext Map.empty
 
 extendStoreContext :: String -> Type -> StoreContext -> StoreContext
-extendStoreContext name typ (StoreContext ctx) = StoreContext $ extendContext name typ ctx
+extendStoreContext loc typ (StoreContext m) = StoreContext $ Map.insert loc typ m
+
+lookupStoreType :: String -> StoreContext -> Maybe Type
+lookupStoreType loc (StoreContext s) = Map.lookup loc s 
 
 typeOf :: Context -> Term -> Maybe Type
 typeOf ctx (Var v) = case (lookupType v ctx) of
@@ -87,7 +90,13 @@ typeOf ctx (Proj2 m2) = case typeOf ctx m2 of
     Nothing -> Nothing
     Just (TProd _ t2) -> Just t2
 
-
+typeOfStore :: Context -> StoreContext -> Term -> Maybe Type
+typeOfStore ctx storeCtx (Loc s) = case lookupStoreType s storeCtx of
+    Nothing -> Nothing
+    Just t' -> Just (TRef t') 
+typeOfStore ctx storeCtx (Ref t) = case typeOfStore ctx storeCtx t of
+    Nothing -> Nothing
+    Just t' -> Just (TRef t')
 
 isSubtype :: Type -> Type -> Bool
 isSubtype t1 TTop = True 
@@ -216,3 +225,7 @@ eval1store (Assign t1 t2) s = case eval1store t1 s of
     Just (_, _) -> Nothing
 eval1store _ s = Nothing
 
+evalStore :: Term -> Store -> Term
+evalStore t s = case eval1store t s of
+    Nothing -> t
+    Just (t', s') -> evalStore t' s'
