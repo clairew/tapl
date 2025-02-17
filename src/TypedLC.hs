@@ -97,6 +97,15 @@ typeOfStore ctx storeCtx (Loc s) = case lookupStoreType s storeCtx of
 typeOfStore ctx storeCtx (Ref t) = case typeOfStore ctx storeCtx t of
     Nothing -> Nothing
     Just t' -> Just (TRef t')
+typeOfStore ctx storeCtx (Deref t) = case typeOfStore ctx storeCtx t of
+    Nothing -> Nothing
+    Just (TRef t') -> Just t'
+typeOfStore ctx storeCtx (Assign t1 t2) = case typeOfStore ctx storeCtx t1 of
+    Nothing -> Nothing
+    Just (TRef t1') -> case typeOfStore ctx storeCtx t2 of
+        Nothing -> Nothing
+        Just t2' -> if t1' == t2' then Just TUnit else Nothing 
+typeOfStore ctx _ t = typeOf ctx t
 
 isSubtype :: Type -> Type -> Bool
 isSubtype t1 TTop = True 
