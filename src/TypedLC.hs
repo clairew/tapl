@@ -8,6 +8,7 @@ data Type = TBool
     | TAns
     | TProd Type Type
     | TTop
+    | TBottom
     | TRecord [(String, Type)]
     | TArr [(Type, Type)]
     | TRef Type
@@ -151,7 +152,9 @@ typeOfStore ctx storeCtx (If t1 t2 t3) = case typeOfStore ctx storeCtx t1 of
 typeOfStore ctx storeCtx t = typeOf ctx t 
 
 isSubtype :: Type -> Type -> Bool
-isSubtype t1 TTop = True 
+isSubtype t1 TTop = True
+isSubtype TBottom t2 = True
+isSubtype t1 TBottom = False
 isSubtype t1 t2 | t1 == t2 = True
 isSubtype (TRecord fields1) (TRecord fields2) = 
     all (\(name2, type2) -> 
@@ -159,7 +162,15 @@ isSubtype (TRecord fields1) (TRecord fields2) =
             Nothing -> False
             Just type1 -> isSubtype type1 type2) fields2 
 isSubtype (TArrow s1 t1) (TArrow s2 t2) = (isSubtype s2 s1) && (isSubtype t1 t2)
+isSubtype (TProd s1 s2) (TProd t1 t2) = (isSubtype s1 t1) && (isSubtype s2 t2) 
 isSubtype _ _ = False
+
+isReflexive :: Type -> Bool
+isReflexive t1 = isSubtype t1 t1 
+
+isTransitive :: Type -> Type -> Type -> Bool
+-- if isSubtype s u and isSubtype u t then isSubtype s t
+isTransitive s u t = isSubtype s u && isSubtype u t
 
 freeVars :: Term -> Set.Set String
 freeVars (Var v) = Set.singleton v
@@ -376,6 +387,7 @@ eval1store (If t1 t2 t3) s =
             No -> Just (t3, s)    
             _ -> Nothing
 eval1store _ s = Nothing
+
 evalStore :: Term -> Store -> Term
 evalStore t s = case eval1store t s of
     Nothing -> t
