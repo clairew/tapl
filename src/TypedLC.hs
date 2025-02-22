@@ -172,6 +172,26 @@ isTransitive :: Type -> Type -> Type -> Bool
 -- if isSubtype s u and isSubtype u t then isSubtype s t
 isTransitive s u t = isSubtype s u && isSubtype u t
 
+-- algorithmic subtyping
+subtype :: Type -> Type -> Bool
+subtype s t = case (s, t) of
+    (TNat, TNat) -> True
+    (TAns, TAns) -> True
+    (TUnit, TUnit) -> True
+    (TArrow s1 s2, TArrow t1 t2) -> subtype t1 s1 && subtype s2 t2
+    (TProd s1 s2, TProd t1 t2) -> subtype s1 t1 && subtype s2 t2
+    (TRecord fields1, TRecord fields2) -> 
+        let names1 = Set.fromList [name | (name, _) <- fields1] 
+            names2 = Set.fromList [name | (name, _) <- fields2] 
+        in Set.isSubsetOf names2 names1 && all(\(name2, type2) ->
+            case lookup name2 fields1 of
+                Nothing -> False
+                Just type1 -> subtype type1 type2)
+        fields2
+    (_, TTop) -> True
+    (TBottom, _) -> True
+    _ -> False
+
 freeVars :: Term -> Set.Set String
 freeVars (Var v) = Set.singleton v
 freeVars (Lam v typ t) = Set.delete v (freeVars t)
