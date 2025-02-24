@@ -70,21 +70,21 @@ meet TBool TBool = TBool
 meet (TArrow s1 s2) (TArrow t1 t2) = 
   TArrow (join s1 t1) (meet s2 t2)  -- J₁ = S₁ ∨ T₁ and M₂ = S₂ ∧ T₂
 meet (TRecord sFields) (TRecord tFields) = 
-  Record $ unionLabels
+  Record $ unionFields
   where
-    allLabels = nub $ map fst sFields ++ map fst tFields
-    unionLabels = [ (l, fieldType l) | l <- allLabels ]
+    allFields = nub $ map fst sFields ++ map fst tFields
+    unionFields = [ (l, fieldType l) | l <- allFields ]
     fieldType l = case (lookup l sFields, lookup l tFields) of
-      (Just s, Just t) -> meet s t    -- label in both records
-      (Just s, Nothing) -> s          -- label only in S
-      (Nothing, Just t) -> t          -- label only in T
+      (Just s, Just t) -> meet s t    -- field in both records
+      (Just s, Nothing) -> s          -- field only in S
+      (Nothing, Just t) -> t          -- field only in T
       (Nothing, Nothing) -> Nothing
 meet _ _ = Nothing
 ```
 
 Since both return `Maybe Type`, we need to prove totality to show when there's a common subtype, it gets returned. 
 
-Join ($S \lor T = J$) 
+#### Join ($S \lor T = J$) 
 
 By structural induction: 
 - Base cases 
@@ -97,7 +97,7 @@ By structural induction:
         - By IH each field join exists. Result is a record with subset of fields, thus always returns a result. 
 
 
-Meet ($S \land T= M$)
+#### Meet ($S \land T= M$)
 
 By structural induction:
 - Base cases
@@ -112,43 +112,82 @@ By structural induction:
 Now we need to prove that Join is an upper bound, and Meet is a lower bound. 
 By induction:
 
-Join is an upper bound
+#### Join is an upper bound
 
 - Base cases:
-    - If S = T = TBool, then J = TBool and  $TBool\subseteq TBool$
-    - If either type has no common structure, J = TTop and $S\subseteq TTop, T\subseteq TTop$
+    - If S: TBool, T: TBool, then J: TBool and  $TBool\subseteq TBool$
+    - If either type has no common structure, J: TTop and $S\subseteq TTop, T\subseteq TTop$
 - Inductive cases:
-    - Case $S = S_1 \rightarrow S_2, T = T_1 \rightarrow T_2$:
-    Let $M_1 = S_1\land T_1 \text{and} J_2 = S_2 \land T_2$. 
-        - $J = M₁\rightarrow J₂$
+    - Case $S: S_1 \rightarrow S_2, T: T_1 \rightarrow T_2$:
+    Let $M_1: S_1\land T_1 \text{and} J_2: S_2 \land T_2$. 
+        - $J: M₁\rightarrow J₂$
         - By IH: $S_2 \subseteq J_2$ and $T_2 \subseteq J_2$
         - By S-Arrow rule: if $M_1 \subseteq S_2$ and $S_2 \subseteq J_2$ then $S_1 \rightarrow S_2 \subseteq M_1 \rightarrow J_2$
         - Therefore $S\subseteq J$ (similarly for $T \subseteq J$). 
 
     - Case S and T are records:
         - J contains intersection of fields
-        - For each common field $l: S.l\lor T.l = J.l$
+        - For each common field $l: S.l\lor T.l: J.l$
         - By IH: $S.l \subseteq J.l$ and $T.l\subseteq J.l$
         - By S-Record: $S\subseteq J$ and $T\subseteq J$
 
-Meet is a lower bound 
+#### Meet is a lower bound 
 - Base cases:
-    - If S = TTop, then M = T and $T \subseteq TTop$
-    - If T = TTop, then M = S and $S \subseteq TTop$
-    - If S = T = TBool, then M = TBool and $TBool \subseteq TBool$
+    - If S: TTop, then $M \subseteq T$ and $T \subseteq TTop$
+    - If T: TTop, then $M \subseteq S$ and $S \subseteq TTop$
+    - If S: TBool, T: TBool, then M: TBool and $TBool \subseteq TBool$
 
 - Inductive cases:
-    - Case $S = S_1\rightarrow S_2$, $T = T_1\rightarrow T_2$:
+    - Case $S: S_1\rightarrow S_2$, $T: T_1\rightarrow T_2$:
         - Let $J_1 = S_1\lor T_1$ and $M_2 = S_2\land T_2$ 
-        - $ M = J_1 \rightarrow M_2$
+        - $ M: J_1 \rightarrow M_2$
         - By IH: $M_2\subseteq S_2$ and $M_2\subseteq T_2$
         - By S-Arrow: if $S_1\subseteq J_1$ and $M_2\subseteq S_2$ then $J_1\rightarrow M_2\subseteq S_1\rightarrow S_2$
         - Therefore $M\subseteq S (M\subseteq T)$
 
     - Case S and T are records:
         - M contains union of fields
-        - For common fields: $M.l = S.l\land T.l$
-        - For fields only in $S: M.l = S.l$
-        - For fields only in $T: M.l = T.l$
+        - For common fields: $M.l \subseteq S.l\land T.l$
+        - For fields only in $S: M.l \subseteq S.l$
+        - For fields only in $T: M.l \subseteq T.l$
         - By IH and construction: $M\subseteq S$ and $M\subseteq T$
 
+Finally, we prove the optimality of upper bound and lower bound. 
+
+#### Join is is the least upper bound if $S \subseteq U$ and $T \subseteq U$, then $J \subseteq U$ where $S \lor T = J$. 
+
+Proof by cases on the type of U:
+
+- U: TTop
+    - $J \subseteq TTop$ for any $J$
+- U: TBool 
+    - By inversion lemma, S and T must be of type TBool. Thus J: TBool and $TBool \subseteq TBool$. 
+- U: $U_1 \rightarrow U_2$ 
+    - By inversion lemma, $S: S_1\rightarrow S_2$, $T: T_1\rightarrow T_2$
+    - $J: M_1\rightarrow J_2$ where $M_1 = S_1\land T_1$, $J_2 = S_2\lor T_2$
+    - By IH: $U_1\subseteq M_1$ and $J_2\subseteq U_2$. 
+    - By S-Arrow: $J\subseteq U$
+- U: TRecord 
+    - By inversion lemma, S and T must be records
+    - J contains intersection of fields
+    - For each field l in U: by IH, $J.l\subseteq U.l$
+    - By S-Record: $J\subseteq U$
+
+#### Meet is the greatest lower bound if $L \subseteq S$ and $L \subseteq T$, then $L \subseteq M$ where $S \land T = M$. 
+
+Proof by cases on type of S and T:
+- Either is type TTop
+    - M is the other type.
+- $S: TBool$, $T: TBool$
+    - M: TBool, by inversion lemma L: TBool. 
+- $S: S_1 \rightarrow S_2$, $T: T_1 \rightarrow T_2$ 
+    - By inversion lemma, $L: L_1\rightarrow L_2$ where $S_1\subseteq L_1, T_1\subseteq L_1, L_2\subseteq S_2, L_2\subseteq T_2$
+    - M: $J_1\rightarrow M_2$ where $J_1 = S_1\lor T_1, M_2 = S_2\land T_2$
+    - By IH: $L_1\subseteq J_1$ and $L_2\subseteq M_2$
+    - By S-Arrow: $L\subseteq M$
+- $S: TRecord$, $T: TRecord$
+    - By inversion lemma, L: TRecord
+    - L must have all fields from S and T
+    - For common fields: by IH, $L.l\subseteq M.l$
+    - For unique fields: $L.l\subseteq S.l$ or $L.l\subseteq T.l$ 
+    - By S-Record: $L\subseteq M$
