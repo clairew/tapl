@@ -39,8 +39,40 @@ Haskell implementation for algorithmic subtyping, which includes the `TBool` cas
 Lemma from 16.1.2 still holds, when TBool is explicitly handled. 
 
 ### 16.2.5
+By induction:
 
-### 16.2.6 
+- T-Var - By TA-Var.
+- T-Abs  $\lambda x:T_1.t_2$
+    - By IH on $t_2$, there exists some $s_2$ where $x:T_1 ⊢ t_1 : S_2$ where $s_2 <: t_2$ 
+    - Using T-Abs $Γ ⊢ \lambda x:T_1.t_1 : T_1→S_2$, 
+    - By S-Arrow, If $T_1 <: T_1$ and $S_2 <: T_2$ then $T_1→S_2 <: T_1\rightarrow T_2$. 
+- T-App $Γ ⊢ t_1 : T_{11}→T_{12}$ $Γ ⊢ t_2 : T_{11}$ 
+    - By IH on $t_1$ - we have some $S_1$ where $Γ ⊢ t_1 : S_1$ and $S_1 <: T_{11}→T_{12}$. 
+    - By inversion of subtyping, $S_1 is a function type. 
+    - $S_1$ must be of form $S_{11}→S_{12}$ where $T_{11} <: S_{11}$ and $S_{12} <: T_{12}$.
+    - By IH on $t_2$, we get some $S_2$ where $Γ ⊢ t_2 : S_2$ and $S_2 <: T_{11}$. 
+    - Since $S_2 <: T_{11}$ and $T_{11} <: S_{11}$, $S_2 <: S_{11}$.
+    - $Γ ⊢ t_1 : S_{11}→S_{12}$ and $Γ ⊢ t_2 : S_2$ and $ S_2 <: S_{11}$, so $Γ ⊢ t_1 t_2 : S_{12}$.  
+- T-Rcd
+    - By IH For each $t_i$, we get $Γ ⊢ t_i : S_i$ and $ S_i <: T_i$.
+    - Using T-Sub for each $t_i$, $Γ ⊢ ti : Ti$. 
+- T-Proj
+    - By IH on $t_1$, $Γ ⊢ t_1 : S_1$, $S <: \{l_i:T_i ^{i∈1}\}..n$
+    - By inversion on subtyping on records, $S_1$ must have the form $\{l_i:T_i ^{i∈1}\}..m$ where $m >= n$. For eaach i in 1..n, $S_i <= T_i$. 
+    - By TA-Proj, $⊢t_1.l_j : Sj$. Since $S_j ≤ T_j$, we have our minimal type. 
+- T-Sub 
+    - By IH there is some minimal type M where $⊢t : M$ and $M ≤ S$. 
+    - By transitivity, since $M ≤ S$ and $S ≤ T$, $M ≤ T$. 
+### 16.2.6
+```
+subtype :: Type -> Type -> Bool
+subtype s t = case (s, t) of
+    (TNat, TNat) -> True
+    (TArrow s1 s2, TArrow t1 t2) -> subtype t1 s1 && subtype s2 t2 
+    (_, TTop) -> True
+    _ -> False
+```
+Without the `TArrow` case, we wouldn't be able to evaluate to the base case for `TNat`. 
 
 ### 16.3.2 
 Prove: 
