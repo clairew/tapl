@@ -102,7 +102,7 @@ meet TBool TBool = TBool
 meet (TArrow s1 s2) (TArrow t1 t2) = 
   TArrow (join s1 t1) (meet s2 t2)  -- J₁ = S₁ ∨ T₁ and M₂ = S₂ ∧ T₂
 meet (TRecord sFields) (TRecord tFields) = 
-  Record $ unionFields
+  TRecord $ unionFields
   where
     allFields = nub $ map fst sFields ++ map fst tFields
     unionFields = [ (l, fieldType l) | l <- allFields ]
@@ -113,45 +113,46 @@ meet (TRecord sFields) (TRecord tFields) =
       (Nothing, Nothing) -> Nothing
 meet _ _ = Nothing
 ```
+The recursive calls for `meet` and `join` operate on smaller sizes of subterms - while `join` will always return a value and thus terminate, `meet` will terminate because the size of its type reduces. 
 
-Since both return `Maybe Type`, we need to prove totality to show when there's a common subtype, it gets returned. 
+Since both return `Maybe Type`, we need to prove totality to show when there's a common subtype, it gets returned.
 
-#### Join ($S \lor T = J$) 
+#### For every pair of types $S$ and $T$, Join ($S \lor T = J$) always returns a valid type
 
-By structural induction: 
+Proof, by structural induction: 
 - Base cases 
-    - If both types are TBool -> returns TBool 
-    - If either type is TTop -> returns TTop. 
+    - If both types are TBool -> returns TBool
+    - If either type is TTop -> returns TTop.
+    - All other cases (_, _) -> returns TTop.  
 - Inductive cases
     -  (TArrow s1 s2) ∨ (TArrow t1 t2)
-        - join s2 t2 by IH. If `meet s1 t1` fails, then `join _ _` results to TTop. Thus always returns a result. 
+        - join s2 t2 by IH. If `meet s1 t1` fails (returns `Nothing`), then `join _ _` results to TTop, which would be the supertype. Thus always returns a result. 
     - (TRecord sFields) (TRecord tFields) 
-        - By IH each field join exists. Result is a record with subset of fields, thus always returns a result. 
+        - By IH for each common field, the join of field types always returns a valid type. If there are no common fields, the result is an empty record, which would be a valid supertype. If one record has no fields, the intersection would be empty which would lead to an empty record. 
 
+#### For every pair of types $S$ and $T$, if there exists a type $L$ where $L \subseteq S, L \subseteq T$, then Meet ($S \land T= M$) returns a valid type $M$. 
 
-#### Meet ($S \land T= M$)
-
-By structural induction:
+Proof, by structural induction:
 - Base cases
-    - If either is TTop -> returns the other type
-    - If either is TBool -> returns TBool. 
+    - If either is TTop -> returns the other type.
+    - If both are TBool -> returns TBool.
+    - All other cases (_, _) -> returns nothing, so fails. If S and T have different constructors and they have a common subtype $L$, then by the inversion lemma $L$ would need to be a subtype of each different constructor at the same time, thus types with different constructors can't have common subtypes.
 - Inductive cases 
     - (TArrow s1 s2) ∧ (TArrow t1 t2)
-        - If there exists some type L that is a subtype of both S and T, by inversion lemma L must also be an arrow type $L_1 \rightarrow L_2$ where $s1 \subseteq L1$ and $t1 \subseteq L1$, and $L2 \subseteq s2$ and $L2 \subseteq t2$. 
+        - If there exists some type L that is a subtype of both S and T, by inversion lemma L must also be an arrow type $L_1 \rightarrow L_2$ where $s1 \subseteq L1$ and $t1 \subseteq L1$, and $L2 \subseteq s2$ and $L2 \subseteq t2$. If `join` returns `TTop`, `TTop` is still valid type. If `meet s2 t2` fails, then the entire meet operation fails meaning - `s2` and `t2` would have no common subtype. 
     - (TRecord sFields) (TRecord tFields)
         - If some type L is a common subtype of S and T, then by the record subtyping rule it must have at least all the fields that appear in either S or T. If a field appears in both S (type s) and T (type t) - then L's type for the field is a subtype of both s and t, thus s and t have a common subtype, thus succeeding by induction. If a field x of L only appears in S, since L is a subtype of S, L must have field x by inversion lemma. The field x in L must be a subtype of S's field x of type s. Thus for unique fields, the original type is kept.  
 
 Now we need to prove that Join is an upper bound, and Meet is a lower bound. 
-By induction:
 
 #### Join is an upper bound
-
+Proof, by structural induction
 - Base cases:
     - If S: TBool, T: TBool, then J: TBool and  $TBool\subseteq TBool$
     - If either type has no common structure, J: TTop and $S\subseteq TTop, T\subseteq TTop$
 - Inductive cases:
     - Case $S: S_1 \rightarrow S_2, T: T_1 \rightarrow T_2$:
-    Let $M_1: S_1\land T_1 \text{and} J_2: S_2 \land T_2$. 
+    Let $M_1: S_1\land T_1 \text{and} J_2: S_2 \lor T_2$. 
         - $J: M₁\rightarrow J₂$
         - By IH: $S_2 \subseteq J_2$ and $T_2 \subseteq J_2$
         - By S-Arrow rule: if $M_1 \subseteq S_2$ and $S_2 \subseteq J_2$ then $S_1 \rightarrow S_2 \subseteq M_1 \rightarrow J_2$
@@ -162,8 +163,11 @@ By induction:
         - For each common field $l: S.l\lor T.l: J.l$
         - By IH: $S.l \subseteq J.l$ and $T.l\subseteq J.l$
         - By S-Record: $S\subseteq J$ and $T\subseteq J$
+        - If either S or T has no fields, their join J will be an empty record. An empty record is a supertype by width subtyping.
+        - For any field in $l$ in $S$ but not in $T$ (or vice versa), by width subtyping the field isn't required in the supertype.  
 
 #### Meet is a lower bound 
+Proof, by structural induction
 - Base cases:
     - If S: TTop, then $M \subseteq T$ and $T \subseteq TTop$
     - If T: TTop, then $M \subseteq S$ and $S \subseteq TTop$
@@ -175,7 +179,7 @@ By induction:
         - $ M: J_1 \rightarrow M_2$
         - By IH: $M_2\subseteq S_2$ and $M_2\subseteq T_2$
         - By S-Arrow: if $S_1\subseteq J_1$ and $M_2\subseteq S_2$ then $J_1\rightarrow M_2\subseteq S_1\rightarrow S_2$
-        - Therefore $M\subseteq S (M\subseteq T)$
+        - Therefore $M\subseteq S \text{ and } M\subseteq T$
 
     - Case S and T are records:
         - M contains union of fields
