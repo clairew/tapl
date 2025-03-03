@@ -10,6 +10,7 @@ data Type
     | TForall String Type
     | TUnit
     | TNat
+    | TAns
     deriving (Show, Eq)
 
 data Term 
@@ -22,6 +23,8 @@ data Term
     | Zero
     | Succ Term
     | IsZero Term
+    | Yes
+    | No
     deriving (Show, Eq)
 
 data Context = Context
@@ -53,6 +56,7 @@ freeTypeVars (TArrow t1 t2) = Set.union (freeTypeVars t1) (freeTypeVars t2)
 freeTypeVars (TForall a t) = Set.delete a (freeTypeVars t)
 freeTypeVars TUnit = Set.empty
 freeTypeVars TNat = Set.empty
+freeTypeVars TAns = Set.empty
 
 freeTermVars :: Term -> Set.Set String
 freeTermVars (Var x) = Set.singleton x
@@ -77,6 +81,7 @@ substType a s (TForall v t)
         in TForall fresh (substType a s (substType v (TVar fresh) t))
 substType a s (TUnit) = TUnit
 substType a s (TNat) = TNat
+substType _ _ TAns = TAns
 
 substTypeInTerm :: String -> Type -> Term -> Term 
 substTypeInTerm a s (Var x) = Var x
@@ -95,6 +100,8 @@ substTypeInTerm _ _ Unit = Unit
 substTypeInTerm _ _ Zero = Zero
 substTypeInTerm a s (Succ e) = Succ (substTypeInTerm a s e)
 substTypeInTerm a s (IsZero e) = IsZero (substTypeInTerm a s e)
+substTypeInTerm _ _ Yes = Yes
+substTypeInTerm _ _ No = No
 
 substTerm :: String -> Term -> Term -> Term 
 substTerm x s (Var v) 
@@ -118,3 +125,51 @@ substTerm _ _ Unit = Unit
 substTerm _ _ Zero = Zero 
 substTerm x s (Succ e) = Succ (substTerm x s e)
 substTerm x s (IsZero e) = IsZero (substTerm x s e)
+
+isWellFormedType :: Context -> Type -> Bool 
+isWellFormedType ctx (TVar v) = typeVarInContext v ctx
+isWellFormedType ctx (TArrow t1 t2) = isWellFormedType ctx t1 && isWellFormedType ctx t2
+isWellFormedType ctx (TForall v t) = 
+    let extendedCtx = extendTypeVar v ctx 
+    in isWellFormedType extendedCtx t
+isWellFormedType _ TUnit = True
+isWellFormedType _ TNat = True
+isWellFormedType _ TAns = True
+
+typeOf :: Context -> Term -> Maybe Type 
+typeOf ctx (Var v) = lookupVar v ctx 
+typeOf ctx (Lam x t1 v) = do 
+    if not $ isWellFormedType ctx t1 
+        then Nothing 
+        else do 
+            let ctx' = extendContext x t1 ctx 
+            t2 <- typeOf ctx' v
+            return (TArrow t1 t2)
+typeOf ctx (TyAbs v t1) = do 
+    let ctx' = extendTypeVar v ctx 
+    t2 <- typeOf ctx' t1
+    return (TForall v t2)
+typeOf ctx (App t1 t2) = do
+    t1' <- typeOf ctx t1 
+    t2' <- typeOf ctx t2 
+    case t1' of
+        TArrow t11 t12 -> if t2' == t12 then Just t12 else Nothing 
+        _ -> Nothing
+typeOf ctx (TyApp t typ) = do 
+    if not $ isWellFormedType ctx typ
+        then Nothing
+    else do
+        t12 <- typeOf ctx t
+        case t12 of
+            TForall v t12 -> Just (substType v typ t12)
+            _ -> Nothing
+typeOf _ Unit = Just TUnit
+typeOf _ Zero = Just TNat
+typeOf ctx (Succ e) = do 
+    t <- typeOf ctx e
+    if t == TNat then Just TNat else Nothing
+typeOf ctx (IsZero e) = do 
+    t <- typeOf ctx e 
+    if t == TNat then Just TNat else Nothing
+typeOf _ Yes = Just TAns
+typeOf _ No = Just TAns
