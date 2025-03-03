@@ -95,3 +95,26 @@ substTypeInTerm _ _ Unit = Unit
 substTypeInTerm _ _ Zero = Zero
 substTypeInTerm a s (Succ e) = Succ (substTypeInTerm a s e)
 substTypeInTerm a s (IsZero e) = IsZero (substTypeInTerm a s e)
+
+substTerm :: String -> Term -> Term -> Term 
+substTerm x s (Var v) 
+    | x == v = s
+    | otherwise = Var v
+substTerm x s (Lam v t u)
+    | x == v = Lam v t u 
+    | otherwise = 
+        if Set.notMember v $ freeTermVars s
+            then Lam v t (substTerm x s u)
+        else 
+            let fresh = freshVar x (Set.union(freeTermVars s) (freeTermVars u))
+            in Lam fresh t (substTerm x s (substTerm v (Var fresh) u))
+substTerm x s (TyAbs v t) =  
+    if Set.notMember x $ freeTermVars t 
+            then TyAbs v t  
+            else TyAbs v (substTerm x s t)
+substTerm x s (App t1 t2) = App (substTerm x s t1) (substTerm x s t2)
+substTerm x s (TyApp t typ) = TyApp (substTerm x s t) typ
+substTerm _ _ Unit = Unit
+substTerm _ _ Zero = Zero 
+substTerm x s (Succ e) = Succ (substTerm x s e)
+substTerm x s (IsZero e) = IsZero (substTerm x s e)
