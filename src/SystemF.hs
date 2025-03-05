@@ -153,7 +153,7 @@ typeOf ctx (App t1 t2) = do
     t1' <- typeOf ctx t1 
     t2' <- typeOf ctx t2 
     case t1' of
-        TArrow t11 t12 -> if t2' == t12 then Just t12 else Nothing 
+        TArrow t11 t12 -> if t2' == t11 then Just t12 else Nothing 
         _ -> Nothing
 typeOf ctx (TyApp t typ) = do 
     if not $ isWellFormedType ctx typ
@@ -161,7 +161,7 @@ typeOf ctx (TyApp t typ) = do
     else do
         t12 <- typeOf ctx t
         case t12 of
-            TForall v t12 -> Just (substType v typ t12)
+            TForall v body -> Just (substType v typ body)
             _ -> Nothing
 typeOf _ Unit = Just TUnit
 typeOf _ Zero = Just TNat
@@ -173,3 +173,45 @@ typeOf ctx (IsZero e) = do
     if t == TNat then Just TNat else Nothing
 typeOf _ Yes = Just TAns
 typeOf _ No = Just TAns
+
+isVal :: Term -> Bool
+isVal (Lam _ _ _) = True
+isVal (TyAbs _ _) = True
+isVal (Var _) = True
+isVal (Succ e) = isVal e
+isVal Unit = True
+isVal Zero = True
+isVal Yes = True
+isVal No = True
+isVal _ = False
+
+eval1 :: Term -> Maybe Term
+eval1 (Var _) = Nothing
+eval1 (Lam _ _ _) = Nothing 
+eval1 (TyAbs _ _) = Nothing
+eval1 (App t1 t2) = case t1 of
+    Lam x typ t12 | isVal t2 -> Just (substTerm x t2 t12)
+    _ -> case eval1 t1 of
+        Just t1' -> Just (App t1' t2)
+        Nothing -> case eval1 t2 of
+            Just t2' | isVal t1 -> Just (App t1 t2')
+            Nothing -> Nothing
+eval1 (Succ t) = case eval1 t of
+    Just t' -> Just (Succ t')
+    Nothing -> Nothing
+eval1 (IsZero t) = case t of
+     Zero -> Just Yes
+     Succ nv | isVal nv -> Just No
+     _ -> case eval1 t of
+         Just t' -> Just (IsZero t')
+         Nothing -> Nothing
+eval1 (TyApp (TyAbs v t12) t2) = Just (substTypeInTerm v t2 t12)
+eval1 (TyApp t typ) = case eval1 t of
+    Just t' -> Just (TyApp t' typ)
+    Nothing -> Nothing
+eval1 _ = Nothing
+
+eval :: Term -> Term 
+eval t = case eval1 t of
+    Nothing -> t
+    Just t' -> eval t'
