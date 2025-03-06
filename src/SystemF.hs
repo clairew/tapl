@@ -27,6 +27,10 @@ data Term
     | No
     deriving (Show, Eq)
 
+type Constraint = (Type, Type)
+type ConstraintSet = [Constraint]
+type VarSet = Set.Set String
+
 data Context = Context
     { termVars :: [(String, Type)]
     , typeVars :: Set.Set String
@@ -215,3 +219,23 @@ eval :: Term -> Term
 eval t = case eval1 t of
     Nothing -> t
     Just t' -> eval t'
+
+isNormalForm :: Term -> Bool
+isNormalForm t = case eval1 t of
+    Nothing -> True
+    Just _ -> False
+
+stepsToNormalForm :: Term -> Int 
+stepsToNormalForm t = case eval1 t of
+    Nothing -> 0 
+    Just t' -> 1 + stepsToNormalForm t'
+
+
+inferConstraints :: Context -> Term -> (Type, ConstraintSet, VarSet)
+inferConstraints ctx (Var v) = case lookupVar v ctx of
+    Just t -> (t, [], Set.empty)
+    Nothing -> error $ "Unbound variable: " ++ v
+inferConstraints ctx (Lam x t1 t2) = 
+    let extendedCtx = extendContext x t1 ctx 
+        (bodytype, constraints, vars) = inferConstraints extendedCtx t2 
+     in (TArrow t1 bodytype, constraints, vars)
