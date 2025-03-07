@@ -29,7 +29,7 @@ data Term
 
 type Constraint = (Type, Type)
 type ConstraintSet = [Constraint]
-type VarSet = Set.Set String
+type FreshVarSeq = [String]
 
 data Context = Context
     { termVars :: [(String, Type)]
@@ -53,6 +53,11 @@ typeVarInContext a (Context _ types) = Set.member a types
 
 freshVar :: String -> Set.Set String -> String
 freshVar x vars = head $ filter (\v -> Set.notMember v vars) $ map (\n -> x ++ replicate n '\'') [1..]
+
+-- from TAPL 22.3.9
+freshVarPreAlloc :: FreshVarSeq -> (Type, FreshVarSeq)
+freshVarPreAlloc [] = error "Exhausted the supply of fresh variable names"
+freshVarPreAlloc (v:vs) = (TVar v, vs) 
 
 freeTypeVars :: Type -> Set.Set String 
 freeTypeVars (TVar a) = Set.singleton a
@@ -230,12 +235,46 @@ stepsToNormalForm t = case eval1 t of
     Nothing -> 0 
     Just t' -> 1 + stepsToNormalForm t'
 
-
-inferConstraints :: Context -> Term -> (Type, ConstraintSet, VarSet)
+-- set-based approach where we generate fresh type variables not in the VarSet
+-- type VarSet = Set.Set String
+{--inferConstraints :: Context -> Term -> (Type, ConstraintSet, VarSet)
 inferConstraints ctx (Var v) = case lookupVar v ctx of
     Just t -> (t, [], Set.empty)
     Nothing -> error $ "Unbound variable: " ++ v
-inferConstraints ctx (Lam x t1 t2) = 
-    let extendedCtx = extendContext x t1 ctx 
-        (bodytype, constraints, vars) = inferConstraints extendedCtx t2 
+inferConstraints ctx (Lam x t1 t2) =
+    let extendedCtx = extendContext x t1 ctx
+        (bodytype, constraints, vars) = inferConstraints extendedCtx t2
      in (TArrow t1 bodytype, constraints, vars)
+--}
+
+-- sequence approach from tapl 22.3.9 
+-- we have a sequence of available fresh type variables
+{--inferConstraints :: Context -> Term -> FreshVarSeq -> (Type, ConstraintSet, FreshVarSeq)
+inferConstraints ctx (Var v) freshVars = case lookupVar v ctx of
+    Just t -> (t, [], freshVars)
+    Nothing -> error $ "Unbound variable: " ++ v
+inferConstraints ctx (Lam x t1 t2) freshVars = 
+    let extendedCtx = extendContext x t1 ctx 
+        (bodytype, constraints, vars') = inferConstraints extendedCtx t2 freshVars 
+     in (TArrow t1 bodytype, constraints, vars')
+--}
+
+-- generator approach from tapl 22.3.10 
+-- use a recursive generator for fresh type variables
+data UVarGen = NextUVar String UVarGen
+
+initialUVarGen :: UVarGen 
+initialUVarGen = go 0 
+    where go n = NextUVar ("?X_" ++ show n) (go (n+1))
+
+freshGenVar :: UVarGen -> (Type, UVarGen) 
+freshGenVar (NextUVar name nextGen) = (TVar name, nextGen)
+
+inferConstraints :: Context -> Term -> UVarGen -> (Type, ConstraintSet, UVarGen)
+inferConstraints ctx (Var v) freshVarGen = case lookupVar v ctx of
+    Just t -> (t, [], freshVarGen)
+    Nothing -> error $ "Unbound variable: " ++ v
+inferConstraints ctx (Lam x t1 t2) freshVarGen =
+    let extendedCtx = extendContext x t1 ctx 
+        (bodytype, constraints, freshVarGen') = inferConstraints extendedCtx t2 freshVarGen 
+     in (TArrow t1 bodytype, constraints, freshVarGen')
