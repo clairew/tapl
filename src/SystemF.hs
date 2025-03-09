@@ -3,6 +3,7 @@ module SystemF where
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Debug.Trace
+import Control.Monad.State
 
 data Type
     = TVar String
@@ -23,6 +24,7 @@ data Term
     | Zero
     | Succ Term
     | IsZero Term
+    | Pred Term
     | Yes
     | No
     deriving (Show, Eq)
@@ -270,6 +272,20 @@ initialUVarGen = go 0
 freshGenVar :: UVarGen -> (Type, UVarGen) 
 freshGenVar (NextUVar name nextGen) = (TVar name, nextGen)
 
+-- state monad approach
+freshStateVar :: State String Type
+freshStateVar = do 
+    current <- get 
+    put (current ++ "'")
+    return $ TVar current 
+
+inferNatOperation :: Context -> Term -> Type -> UVarGen -> (Type, ConstraintSet, UVarGen)
+inferNatOperation ctx subterm resultType freshVarGen = 
+    let (subtype, constraints, freshVarGen1) = inferConstraints ctx subterm freshVarGen
+        newConstraints = constraints ++ [(subtype, TNat)] 
+    in
+        (resultType, newConstraints, freshVarGen1)
+
 inferConstraints :: Context -> Term -> UVarGen -> (Type, ConstraintSet, UVarGen)
 inferConstraints ctx (Var v) freshVarGen = case lookupVar v ctx of
     Just t -> (t, [], freshVarGen)
@@ -278,3 +294,21 @@ inferConstraints ctx (Lam x t1 t2) freshVarGen =
     let extendedCtx = extendContext x t1 ctx 
         (bodytype, constraints, freshVarGen') = inferConstraints extendedCtx t2 freshVarGen 
      in (TArrow t1 bodytype, constraints, freshVarGen')
+inferConstraints ctx (App t1 t2) freshVarGen =
+    let (type1, constraints1, freshVarGen1) = inferConstraints ctx t1 freshVarGen
+        (type2, constraints2, freshVarGen2) = inferConstraints ctx t2 freshVarGen1
+        (resultType, freshVarGen3) = freshGenVar freshVarGen2
+        newConstraint = (type1, TArrow type2 resultType)
+        allConstraints = constraints1 ++ constraints2 ++ [newConstraint]
+    in 
+        (resultType, allConstraints, freshVarGen3)
+inferConstraints ctx Zero freshVarGen = (TNat, [], freshVarGen)
+{-inferConstraints ctx (Succ e) freshVarGen =  
+    let (type1, constraints1, freshVarGen1) = inferConstraints ctx e freshVarGen
+        newConstraints = constraints1 ++ [(type1, TNat)]
+    in 
+        (TNat, newConstraints, freshVarGen1)-}
+-- CT-Succ, CT-Pred, CT-IsZero result in duplicating code so instead use a helper to generalize the rules.
+inferConstraints ctx (Succ e) freshVarGen = inferNatOperation ctx e TNat freshVarGen
+inferConstraints ctx (Pred e) freshVarGen = inferNatOperation ctx e TNat freshVarGen
+inferConstraints ctx IsZero freshVarGen = inferNatOperation ctx IsZero TAns freshVarGen
