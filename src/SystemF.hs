@@ -12,6 +12,7 @@ data Type
     | TUnit
     | TNat
     | TAns
+    | TBool
     deriving (Show, Eq)
 
 data Term 
@@ -27,6 +28,8 @@ data Term
     | Pred Term
     | Yes
     | No
+    | TTrue
+    | TFalse
     deriving (Show, Eq)
 
 type Constraint = (Type, Type)
@@ -68,6 +71,7 @@ freeTypeVars (TForall a t) = Set.delete a (freeTypeVars t)
 freeTypeVars TUnit = Set.empty
 freeTypeVars TNat = Set.empty
 freeTypeVars TAns = Set.empty
+freeTypeVars TBool = Set.empty
 
 freeTermVars :: Term -> Set.Set String
 freeTermVars (Var x) = Set.singleton x
@@ -80,6 +84,8 @@ freeTermVars Zero = Set.empty
 freeTermVars (Succ e) = freeTermVars e
 freeTermVars (Pred e) = freeTermVars e
 freeTermVars (IsZero e) = freeTermVars e
+freeTermVars TTrue = Set.empty
+freeTermVars TFalse = Set.empty 
 
 substType :: String -> Type -> Type -> Type  
 substType a s (TVar b) 
@@ -91,9 +97,11 @@ substType a s (TForall v t)
     | otherwise = if Set.notMember v (freeTypeVars s) then TForall v (substType a s t)
         else let fresh = freshVar v (Set.union (freeTypeVars t) (freeTypeVars s))
         in TForall fresh (substType a s (substType v (TVar fresh) t))
-substType a s (TUnit) = TUnit
-substType a s (TNat) = TNat
+substType _ _ TUnit = TUnit
+substType _ _ TNat = TNat
+substType _ _ TBool = TBool
 substType _ _ TAns = TAns
+
 
 substTypeInTerm :: String -> Type -> Term -> Term 
 substTypeInTerm a s (Var x) = Var x
@@ -115,6 +123,8 @@ substTypeInTerm a s (Pred e) = Pred (substTypeInTerm a s e)
 substTypeInTerm a s (IsZero e) = IsZero (substTypeInTerm a s e)
 substTypeInTerm _ _ Yes = Yes
 substTypeInTerm _ _ No = No
+substTypeInTerm _ _ TTrue = TTrue
+substTypeInTerm _ _ TFalse = TFalse
 
 substTerm :: String -> Term -> Term -> Term 
 substTerm x s (Var v) 
@@ -135,7 +145,11 @@ substTerm x s (TyAbs v t) =
 substTerm x s (App t1 t2) = App (substTerm x s t1) (substTerm x s t2)
 substTerm x s (TyApp t typ) = TyApp (substTerm x s t) typ
 substTerm _ _ Unit = Unit
-substTerm _ _ Zero = Zero 
+substTerm _ _ Zero = Zero
+substTerm _ _ Yes = Yes 
+substTerm _ _ No = No
+substTerm _ _ TTrue = TTrue
+substTerm _ _ TFalse = TFalse
 substTerm x s (Succ e) = Succ (substTerm x s e)
 substTerm x s (Pred e) = Pred (substTerm x s e)
 substTerm x s (IsZero e) = IsZero (substTerm x s e)
@@ -149,6 +163,7 @@ isWellFormedType ctx (TForall v t) =
 isWellFormedType _ TUnit = True
 isWellFormedType _ TNat = True
 isWellFormedType _ TAns = True
+isWellFormedType _ TBool = True
 
 typeOf :: Context -> Term -> Maybe Type 
 typeOf ctx (Var v) = lookupVar v ctx 
@@ -190,6 +205,8 @@ typeOf ctx (IsZero e) = do
     if t == TNat then Just TNat else Nothing
 typeOf _ Yes = Just TAns
 typeOf _ No = Just TAns
+typeOf _ TTrue = Just TBool
+typeOf _ TFalse = Just TBool
 
 isVal :: Term -> Bool
 isVal (Lam _ _ _) = True
@@ -201,6 +218,8 @@ isVal Unit = True
 isVal Zero = True
 isVal Yes = True
 isVal No = True
+isVal TTrue = True
+isVal TFalse = False
 isVal _ = False
 
 eval1 :: Term -> Maybe Term
@@ -322,3 +341,5 @@ inferConstraints ctx Zero freshVarGen = (TNat, [], freshVarGen)
 inferConstraints ctx (Succ e) freshVarGen = inferNatOperation ctx e TNat freshVarGen
 inferConstraints ctx (Pred e) freshVarGen = inferNatOperation ctx e TNat freshVarGen
 inferConstraints ctx (IsZero e) freshVarGen = inferNatOperation ctx e TAns freshVarGen
+inferConstraints ctx TTrue freshVarGen = (TBool, [], freshVarGen)
+inferConstraints ctx TFalse freshVarGen = (TBool, [], freshVarGen)
