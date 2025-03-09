@@ -78,6 +78,7 @@ freeTermVars (TyApp e _) = freeTermVars e
 freeTermVars Unit = Set.empty
 freeTermVars Zero = Set.empty
 freeTermVars (Succ e) = freeTermVars e
+freeTermVars (Pred e) = freeTermVars e
 freeTermVars (IsZero e) = freeTermVars e
 
 substType :: String -> Type -> Type -> Type  
@@ -110,6 +111,7 @@ substTypeInTerm a s (TyApp t typ) = TyApp (substTypeInTerm a s t) (substType a s
 substTypeInTerm _ _ Unit = Unit
 substTypeInTerm _ _ Zero = Zero
 substTypeInTerm a s (Succ e) = Succ (substTypeInTerm a s e)
+substTypeInTerm a s (Pred e) = Pred (substTypeInTerm a s e)
 substTypeInTerm a s (IsZero e) = IsZero (substTypeInTerm a s e)
 substTypeInTerm _ _ Yes = Yes
 substTypeInTerm _ _ No = No
@@ -135,6 +137,7 @@ substTerm x s (TyApp t typ) = TyApp (substTerm x s t) typ
 substTerm _ _ Unit = Unit
 substTerm _ _ Zero = Zero 
 substTerm x s (Succ e) = Succ (substTerm x s e)
+substTerm x s (Pred e) = Pred (substTerm x s e)
 substTerm x s (IsZero e) = IsZero (substTerm x s e)
 
 isWellFormedType :: Context -> Type -> Bool 
@@ -179,6 +182,9 @@ typeOf _ Zero = Just TNat
 typeOf ctx (Succ e) = do 
     t <- typeOf ctx e
     if t == TNat then Just TNat else Nothing
+typeOf ctx (Pred e) = do 
+    t <- typeOf ctx e
+    if t == TNat then Just TNat else Nothing
 typeOf ctx (IsZero e) = do 
     t <- typeOf ctx e 
     if t == TNat then Just TNat else Nothing
@@ -190,6 +196,7 @@ isVal (Lam _ _ _) = True
 isVal (TyAbs _ _) = True
 isVal (Var _) = True
 isVal (Succ e) = isVal e
+isVal (Pred e) = isVal e
 isVal Unit = True
 isVal Zero = True
 isVal Yes = True
@@ -209,6 +216,9 @@ eval1 (App t1 t2) = case t1 of
             Nothing -> Nothing
 eval1 (Succ t) = case eval1 t of
     Just t' -> Just (Succ t')
+    Nothing -> Nothing
+eval1 (Pred t) = case eval1 t of
+    Just t' -> Just (Pred t')
     Nothing -> Nothing
 eval1 (IsZero t) = case t of
      Zero -> Just Yes
@@ -311,4 +321,4 @@ inferConstraints ctx Zero freshVarGen = (TNat, [], freshVarGen)
 -- CT-Succ, CT-Pred, CT-IsZero result in duplicating code so instead use a helper to generalize the rules.
 inferConstraints ctx (Succ e) freshVarGen = inferNatOperation ctx e TNat freshVarGen
 inferConstraints ctx (Pred e) freshVarGen = inferNatOperation ctx e TNat freshVarGen
-inferConstraints ctx IsZero freshVarGen = inferNatOperation ctx IsZero TAns freshVarGen
+inferConstraints ctx (IsZero e) freshVarGen = inferNatOperation ctx e TAns freshVarGen
