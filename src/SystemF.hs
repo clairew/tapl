@@ -30,6 +30,7 @@ data Term
     | No
     | TTrue
     | TFalse
+    | TIf Term Term Term
     deriving (Show, Eq)
 
 type Constraint = (Type, Type)
@@ -86,6 +87,7 @@ freeTermVars (Pred e) = freeTermVars e
 freeTermVars (IsZero e) = freeTermVars e
 freeTermVars TTrue = Set.empty
 freeTermVars TFalse = Set.empty 
+freeTermVars (TIf e1 e2 e3) = Set.unions [freeTermVars e1, freeTermVars e2, freeTermVars e3]
 
 substType :: String -> Type -> Type -> Type  
 substType a s (TVar b) 
@@ -125,6 +127,7 @@ substTypeInTerm _ _ Yes = Yes
 substTypeInTerm _ _ No = No
 substTypeInTerm _ _ TTrue = TTrue
 substTypeInTerm _ _ TFalse = TFalse
+substTypeInTerm a s (TIf e1 e2 e3) = TIf (substTypeInTerm a s e1) (substTypeInTerm a s e2) (substTypeInTerm a s e3)
 
 substTerm :: String -> Term -> Term -> Term 
 substTerm x s (Var v) 
@@ -153,6 +156,7 @@ substTerm _ _ TFalse = TFalse
 substTerm x s (Succ e) = Succ (substTerm x s e)
 substTerm x s (Pred e) = Pred (substTerm x s e)
 substTerm x s (IsZero e) = IsZero (substTerm x s e)
+substTerm x s (TIf e1 e2 e3) = TIf (substTerm x s e1) (substTerm x s e2) (substTerm x s e3)
 
 isWellFormedType :: Context -> Type -> Bool 
 isWellFormedType ctx (TVar v) = typeVarInContext v ctx
@@ -207,6 +211,13 @@ typeOf _ Yes = Just TAns
 typeOf _ No = Just TAns
 typeOf _ TTrue = Just TBool
 typeOf _ TFalse = Just TBool
+typeOf ctx (TIf e1 e2 e3) = do
+    t1 <- typeOf ctx e1
+    t2 <- typeOf ctx e2
+    t3 <- typeOf ctx e3
+    if t1 == TBool && t2 == t3
+        then Just t2
+        else Nothing
 
 isVal :: Term -> Bool
 isVal (Lam _ _ _) = True
@@ -249,6 +260,13 @@ eval1 (TyApp (TyAbs v t12) t2) = Just (substTypeInTerm v t2 t12)
 eval1 (TyApp t typ) = case eval1 t of
     Just t' -> Just (TyApp t' typ)
     Nothing -> Nothing
+eval1 (TIf e1 e2 e3) = 
+    case e1 of
+        TTrue -> Just e2
+        TFalse -> Just e3
+        _ -> case eval1 e1 of
+                Just e1' -> Just (TIf e1' e2 e3)
+                Nothing -> Nothing
 eval1 _ = Nothing
 
 eval :: Term -> Term 
@@ -343,3 +361,12 @@ inferConstraints ctx (Pred e) freshVarGen = inferNatOperation ctx e TNat freshVa
 inferConstraints ctx (IsZero e) freshVarGen = inferNatOperation ctx e TAns freshVarGen
 inferConstraints ctx TTrue freshVarGen = (TBool, [], freshVarGen)
 inferConstraints ctx TFalse freshVarGen = (TBool, [], freshVarGen)
+inferConstraints ctx (TIf e1 e2 e3) freshVarGen =
+    let (e1type, e1constraints, freshVarGen1) = inferConstraints ctx e1 freshVarGen
+        (e2type, e2constraints, freshVarGen2) = inferConstraints ctx e2 freshVarGen1
+        (e3type, e3constraints, freshVarGen3) = inferConstraints ctx e3 freshVarGen2
+        condConstraint = [(e1type, TBool)]
+        branchConstraint = [(e2type, e3type)]
+        allConstraints = e1constraints ++ e2constraints ++ e3constraints ++ condConstraint ++ branchConstraint
+    in
+        (e2type, allConstraints, freshVarGen3)
