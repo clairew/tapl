@@ -370,3 +370,47 @@ inferConstraints ctx (TIf e1 e2 e3) freshVarGen =
         allConstraints = e1constraints ++ e2constraints ++ e3constraints ++ condConstraint ++ branchConstraint
     in
         (e2type, allConstraints, freshVarGen3)
+
+type Substitution = Map.Map String Type
+
+emptySubst :: Substitution
+emptySubst = Map.empty
+
+singleSubst :: String -> Type -> Substitution
+singleSubst x t = Map.insert x t emptySubst
+
+applySubst :: Substitution -> Type -> Type
+applySubst subst ty = 
+    Map.foldrWithKey (\var replacement result -> 
+                       substType var replacement result) 
+                     ty 
+                     subst
+
+composeSubst :: Substitution -> Substitution -> Substitution
+composeSubst s1 s2 =
+    let s2Applied = Map.map (applySubst s1) s2
+    in Map.union s2Applied s1
+
+unify :: Type -> Type -> Maybe Substitution
+unify t1 t2 = unifyConstraints [(t1, t2)]
+
+unifyConstraints :: ConstraintSet -> Maybe Substitution
+unifyConstraints [] = Just emptySubst
+unifyConstraints ((t1, t2):rest)
+    | t1 == t2 = unifyConstraints rest
+    | TVar v <- t1, not (v `Set.member` freeTypeVars t2) =
+        let subst = singleSubst v t2
+            rest' = map (\(a, b) -> (applySubst subst a, applySubst subst b)) rest
+        in do
+            result <- unifyConstraints rest'
+            return (composeSubst result subst)
+    | TVar v <- t2, not (v `Set.member` freeTypeVars t1) =
+        let subst = singleSubst v t1
+            rest' = map (\(a, b) -> (applySubst subst a, applySubst subst b)) rest
+        in do
+            result <- unifyConstraints rest'
+            return (composeSubst result subst)
+    | TArrow s1 s2 <- t1, TArrow t1' t2' <- t2 =
+        let newConstraints = [(s1, t1'), (s2,t2')]
+        in unifyConstraints (newConstraints ++ rest)
+    | otherwise = Nothing
