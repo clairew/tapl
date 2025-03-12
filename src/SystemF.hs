@@ -414,3 +414,10 @@ unifyConstraints ((t1, t2):rest)
         let newConstraints = [(s1, t1'), (s2,t2')]
         in unifyConstraints (newConstraints ++ rest)
     | otherwise = Nothing
+
+inferPrincipalType :: Context -> Term -> Maybe Type 
+inferPrincipalType ctx t1 =
+    let (inferredType, constraints, _) = inferConstraints ctx t1 initialUVarGen 
+    in do 
+        subst <- unifyConstraints constraints 
+        return (applySubst subst inferredType)
