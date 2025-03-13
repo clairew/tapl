@@ -108,14 +108,20 @@ substType _ _ TAns = TAns
 substTypeInTerm :: String -> Type -> Term -> Term 
 substTypeInTerm a s (Var x) = Var x
 substTypeInTerm a s (Lam x t e) = Lam x (substType a s t) (substTypeInTerm a s e)
-substTypeInTerm a s (TyAbs x t) 
-    | a == x = TyAbs x t 
-    | otherwise = 
-        if Set.notMember x $ freeTypeVars s 
-            then TyAbs x (substTypeInTerm a s t)
+substTypeInTerm a s (TyAbs x t)
+    | a == x = TyAbs x t  
+    | otherwise =
+        let bindsX = case s of
+                TForall y _ | x == y -> True
+                _ -> False
+            needsRename = bindsX || Set.member x (freeTypeVars s)
+        in if needsRename
+            then 
+                let fresh = freshVar x (Set.union (freeTypeVars s) (Set.singleton a))
+                    t' = substTypeInTerm x (TVar fresh) t
+                in TyAbs fresh (substTypeInTerm a s t')
             else
-                let fresh = freshVar x (Set.union(freeTypeVars s) (Set.fromList [a]))
-                in TyAbs fresh (substTypeInTerm a s (substTypeInTerm x (TVar fresh) t))
+                TyAbs x (substTypeInTerm a s t)
 substTypeInTerm a s (App e1 e2) = App (substTypeInTerm a s e1) (substTypeInTerm a s e2) 
 substTypeInTerm a s (TyApp t typ) = TyApp (substTypeInTerm a s t) (substType a s typ)
 substTypeInTerm _ _ Unit = Unit
@@ -206,7 +212,7 @@ typeOf ctx (Pred e) = do
     if t == TNat then Just TNat else Nothing
 typeOf ctx (IsZero e) = do 
     t <- typeOf ctx e 
-    if t == TNat then Just TNat else Nothing
+    if t == TAns then Just TAns else Nothing
 typeOf _ Yes = Just TAns
 typeOf _ No = Just TAns
 typeOf _ TTrue = Just TBool
@@ -230,7 +236,7 @@ isVal Zero = True
 isVal Yes = True
 isVal No = True
 isVal TTrue = True
-isVal TFalse = False
+isVal TFalse = True
 isVal _ = False
 
 eval1 :: Term -> Maybe Term
@@ -421,3 +427,5 @@ inferPrincipalType ctx t1 =
     in do 
         subst <- unifyConstraints constraints 
         return (applySubst subst inferredType)
+
+
