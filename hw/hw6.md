@@ -39,6 +39,21 @@ Above is code for the fresh variable generator, and using constraint generation 
 
 `inferConstraints` accepts a typing context, a term, and a fresh variable generator, and returns a type, set of constraints, and a fresh variable generator with the remaining unused fresh variables from the input fresh variable generator. 
 
+#### Prove that the constraint generation rules with the fresh variable generator are equivalent to the original constraint generation rules. 
+
+Proving the equivalence can be broken down to soundness and completeness. 
+
+#### Soundness - If  $\Gamma$ ⊢F t:T |F' C, and variables in $\Gamma$ and t do not appear in F, then $\Gamma$ ⊢F t:T |F\F' C 
+
+Induction on typing derivations.
+
+Base cases:
+- Constants and Var - a newly initiated F is returned, where F contains variables that aren't in the typing context or the term. The implementation with the fresh variable generator returns an empty constraint sets, the constant's type (or for Var, looks up variable's type), and the newly initiated fresh variable generator - which is the same as the original system.  
+
+Inductive cases:
+- Lambda - By IH the subsequent calls that pass the initial fresh variable generator will not contain variables that aren't in the typing context or term. Variable generator is then passed on to subsequent calls. 
+- App - By IH, the subsequent calls that pass the initial fresh variable generator will not contain variables that aren't in the typing context or term. The head of the fresh variable generator is used for the new constraint, and the subsequence sequence of the fresh variable generator is passed onto subsequent calls.
+
 ### 22.4.6
 ```
 type Substitution = Map.Map String Type
@@ -51,7 +66,7 @@ singleSubst x t = Map.insert x t emptySubst
 
 applySubst :: Substitution -> Type -> Type
 applySubst subst ty =
-    Map.foldrWithKey (\var replacement result ->  -- W: Avoid lambda Found:
+    Map.foldrWithKey (\var replacement result ->  
                        substType var replacement result)
                      ty
                      subst
@@ -70,13 +85,13 @@ unifyConstraints ((t1, t2):rest)
     | t1 == t2 = unifyConstraints rest
     | TVar v <- t1, not (v `Set.member` freeTypeVars t2) =
         let subst = singleSubst v t2
-            rest' = map (\(a, b) -> (applySubst subst a, applySubst subst b)) rest -- W: Use b
+            rest' = map (\(a, b) -> (applySubst subst a, applySubst subst b)) rest  
         in do
             result <- unifyConstraints rest'
             return (composeSubst result subst)
     | TVar v <- t2, not (v `Set.member` freeTypeVars t1) =
         let subst = singleSubst v t1
-            rest' = map (\(a, b) -> (applySubst subst a, applySubst subst b)) rest -- W: Use b
+            rest' = map (\(a, b) -> (applySubst subst a, applySubst subst b)) rest 
         in do
             result <- unifyConstraints rest'
             return (composeSubst result subst)
