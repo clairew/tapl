@@ -1,5 +1,9 @@
 Implementing chapters from Types and Programming Languages and CIS6700 to learn Haskell.
 
+<summary>Topics</summary>
+
+<details>
+
 ## 1/15 lecture
 
 - [ ] Implement untyped lambda calculus
@@ -40,3 +44,13 @@ Implementing chapters from Types and Programming Languages and CIS6700 to learn 
 ## Week of 2/10 
 - [ ] References
 - [ ] Subtyping
+
+## Week of 2/17 
+- [ ] Subtyping and algorithmic subtyping
+
+## Week of 2/24
+- [ ] System F 
+
+## Week of 3/2 
+- [ ] Hindley-Milner
+</details>
