@@ -1,6 +1,6 @@
 ## HW 6
 
-Note - before all of this code, I used my System F implementation. So - still need [all of that](../src/SystemF.hs) STLC with polymorphism typing and evaluation baloney. 
+Note - before all of this code, I used my System F implementation. So - still need [all of that](../src/SystemF.hs) STLC with polymorphism typing and evaluation baloney. Also despite using System F code - I didn't implement type inference for `TyAbs` or `TyApp`.
 
 ### 22.3.9, 22.3.10
 
@@ -53,6 +53,18 @@ Base cases:
 Inductive cases:
 - Lambda - By IH the subsequent calls that pass the initial fresh variable generator will not contain variables that aren't in the typing context or term. Variable generator is then passed on to subsequent calls. 
 - App - By IH, the subsequent calls that pass the initial fresh variable generator will not contain variables that aren't in the typing context or term. The head of the fresh variable generator is used for the new constraint, and the subsequence sequence of the fresh variable generator is passed onto subsequent calls.
+
+#### Completeness -  If  $\Gamma$ ⊢ t:T |X C, then there is some permutation F of the names in X such that then $\Gamma$ ⊢F t:T |$\emptyset$ C 
+
+Induction on typing derivations. 
+
+Base cases:
+- Constants - constants don't involve variables, nothing to rename. No constraints are generated. Thus any permutation F would satisfy the completeness property.
+- Var - There is a typing context lookup and the constraint set is empty. No new variables are introduced into the typing context.
+
+Inductive cases
+- Lambda - By IH there exists permutation F in the fresh variable generator, such that all constraints can be satisfied. The fresh variable generator is passed onto subsequent calls. 
+- App - By IH for t1 and t2, both have permutations from the fresh variable generator that satisfy their constraints. Then the combined permutation satisfies all constraints.
 
 ### 22.4.6
 ```
@@ -110,3 +122,8 @@ inferPrincipalType ctx t1 =
         subst <- unifyConstraints constraints
         return (applySubst subst inferredType)
 ```
+
+
+[Haskell Playground](https://play.haskell.org/saved/1xahmVo6)
+
+Includes property based testing unification implementation.
