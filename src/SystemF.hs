@@ -8,7 +8,7 @@ import Control.Monad.State
 data Type
     = TVar String
     | TArrow Type Type
-    | TForall String Type
+    | TForall String Type Type
     | TUnit
     | TNat
     | TAns
@@ -21,7 +21,7 @@ data Term
     = Var String
     | Lam String Type Term
     | App Term Term 
-    | TyAbs String Term 
+    | TyAbs String Type Term 
     | TyApp Term Type 
     | Unit
     | Zero
@@ -70,7 +70,7 @@ freshVarPreAlloc (v:vs) = (TVar v, vs)
 freeTypeVars :: Type -> Set.Set String 
 freeTypeVars (TVar a) = Set.singleton a
 freeTypeVars (TArrow t1 t2) = Set.union (freeTypeVars t1) (freeTypeVars t2)
-freeTypeVars (TForall a t) = Set.delete a (freeTypeVars t)
+freeTypeVars (TForall a bound t) = Set.union (freeTypeVars bound) (Set.delete a (freeTypeVars t))
 freeTypeVars TUnit = Set.empty
 freeTypeVars TNat = Set.empty
 freeTypeVars TAns = Set.empty
@@ -80,7 +80,7 @@ freeTermVars :: Term -> Set.Set String
 freeTermVars (Var x) = Set.singleton x
 freeTermVars (Lam x _ e) = Set.delete x (freeTermVars e)
 freeTermVars (App e1 e2) = Set.union (freeTermVars e1) (freeTermVars e2)
-freeTermVars (TyAbs _ e) = freeTermVars e
+freeTermVars (TyAbs _ _ e) = freeTermVars e
 freeTermVars (TyApp e _) = freeTermVars e
 freeTermVars Unit = Set.empty
 freeTermVars Zero = Set.empty
@@ -169,8 +169,8 @@ substTerm x s (TIf e1 e2 e3) = TIf (substTerm x s e1) (substTerm x s e2) (substT
 isWellFormedType :: Context -> Type -> Bool 
 isWellFormedType ctx (TVar v) = typeVarInContext v ctx
 isWellFormedType ctx (TArrow t1 t2) = isWellFormedType ctx t1 && isWellFormedType ctx t2
-isWellFormedType ctx (TForall v t) = 
-    let extendedCtx = extendTypeVar v ctx 
+isWellFormedType ctx (TForall v bound t) = 
+    let extendedCtx = extendTypeVar v (extendContext v bound ctx)
     in isWellFormedType extendedCtx t
 isWellFormedType _ TUnit = True
 isWellFormedType _ TNat = True
@@ -229,7 +229,7 @@ typeOf ctx (TIf e1 e2 e3) = do
 
 isVal :: Term -> Bool
 isVal (Lam _ _ _) = True
-isVal (TyAbs _ _) = True
+isVal (TyAbs _ _ _) = True
 isVal (Var _) = True
 isVal (Succ e) = isVal e
 isVal (Pred e) = isVal e
@@ -241,20 +241,30 @@ isVal TTrue = True
 isVal TFalse = True
 isVal _ = False
 
-isSubtype :: ctx -> Type -> Type -> Bool
+isSubtype :: Context -> Type -> Type -> Bool
 isSubtype _ t1 TTop = True
 isSubtype _ TBottom t2 = True
 isSubtype _ t1 TBottom = False 
 isSubtype ctx (TVar x) typ =
-    case lookup x ctx of
+    case lookupVar x ctx of
         Just x' -> isSubtype ctx x' typ
         Nothing -> False
 isSubtype ctx (TArrow s1 t1) (TArrow s2 t2) = (isSubtype ctx s2 s1) && (isSubtype ctx t1 t2)
+isSubtype ctx (TForall x1 bound1 t1) (TForall x2 bound2 t2) = 
+    isSubtype ctx bound2 bound1 &&
+    let x = freshVar x1 (Set.union (freeTypeVars t1) (freeTypeVars t2))
+        ctx' = extendContext x bound2 (extendTypeVar x ctx)
+        t1' = substType x1 (TVar x) t1
+        t2' = substType x2 (TVar x) t2
+    in 
+        isSubtype ctx' t1' t2 
+
+
 
 eval1 :: Term -> Maybe Term
 eval1 (Var _) = Nothing
 eval1 (Lam _ _ _) = Nothing 
-eval1 (TyAbs _ _) = Nothing
+eval1 (TyAbs _ _ _) = Nothing
 eval1 (App t1 t2) = case t1 of
     Lam x typ t12 | isVal t2 -> Just (substTerm x t2 t12)
     _ -> case eval1 t1 of
