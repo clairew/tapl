@@ -13,6 +13,8 @@ data Type
     | TNat
     | TAns
     | TBool
+    | TTop
+    | TBottom
     deriving (Show, Eq)
 
 data Term 
@@ -239,6 +241,16 @@ isVal TTrue = True
 isVal TFalse = True
 isVal _ = False
 
+isSubtype :: ctx -> Type -> Type -> Bool
+isSubtype _ t1 TTop = True
+isSubtype _ TBottom t2 = True
+isSubtype _ t1 TBottom = False 
+isSubtype ctx (TVar x) typ =
+    case lookup x ctx of
+        Just x' -> isSubtype ctx x' typ
+        Nothing -> False
+isSubtype ctx (TArrow s1 t1) (TArrow s2 t2) = (isSubtype ctx s2 s1) && (isSubtype ctx t1 t2)
+
 eval1 :: Term -> Maybe Term
 eval1 (Var _) = Nothing
 eval1 (Lam _ _ _) = Nothing 
@@ -427,5 +439,7 @@ inferPrincipalType ctx t1 =
     in do 
         subst <- unifyConstraints constraints 
         return (applySubst subst inferredType)
+
+
 
 
