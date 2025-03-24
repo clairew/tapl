@@ -176,6 +176,7 @@ isWellFormedType _ TUnit = True
 isWellFormedType _ TNat = True
 isWellFormedType _ TAns = True
 isWellFormedType _ TBool = True
+isWellFormedType _ TTop = True
 
 typeOf :: Context -> Term -> Maybe Type
 typeOf ctx (Var v) = lookupVar v ctx
@@ -197,27 +198,33 @@ typeOf ctx (App t1 t2) = do
     t1' <- typeOf ctx t1
     t2' <- typeOf ctx t2
     case t1' of
-        TArrow t11 t12 -> if t2' == t11 then Just t12 else Nothing
+        TArrow t11 t12 ->
+            if isSubtype ctx t2' t11
+                then Just t12
+                else Nothing
         _ -> Nothing
-typeOf ctx (TyApp t typ) = do
-    if not $ isWellFormedType ctx typ
+typeOf ctx (TyApp t1 t2) = do
+    if not $ isWellFormedType ctx t2
         then Nothing
     else do
-        t12 <- typeOf ctx t
-        case t12 of
-            TForall v bound body -> Just (substType v typ body)
+        t1' <- typeOf ctx t1
+        case t1' of
+            TForall v bound body ->
+                if isSubtype ctx t2 bound 
+                    then Just (substType v t2 body)
+                    else Nothing
             _ -> Nothing
 typeOf _ Unit = Just TUnit
 typeOf _ Zero = Just TNat
 typeOf ctx (Succ e) = do
     t <- typeOf ctx e
-    if t == TNat then Just TNat else Nothing
+    if isSubtype ctx t TNat then Just TNat else Nothing
 typeOf ctx (Pred e) = do
     t <- typeOf ctx e
-    if t == TNat then Just TNat else Nothing
+    if isSubtype ctx t TNat then Just TNat else Nothing
 typeOf ctx (IsZero e) = do
     t <- typeOf ctx e
-    if t == TAns then Just TAns else Nothing
+    if isSubtype ctx t TNat then Just TAns else Nothing
 typeOf _ Yes = Just TAns
 typeOf _ No = Just TAns
 typeOf _ TTrue = Just TBool
@@ -226,8 +233,10 @@ typeOf ctx (TIf e1 e2 e3) = do
     t1 <- typeOf ctx e1
     t2 <- typeOf ctx e2
     t3 <- typeOf ctx e3
-    if t1 == TBool && t2 == t3
-        then Just t2
+    if isSubtype ctx t1 TBool && (isSubtype ctx t2 t3 || isSubtype ctx t3 t2)
+        then if isSubtype ctx t2 t3
+            then Just t3
+            else Just t2
         else Nothing
 
 isSubtype :: Context -> Type -> Type -> Bool
@@ -237,8 +246,12 @@ isSubtype ctx (TVar a) t =
     case lookupTypeVar a ctx of
         Just bound -> isSubtype ctx bound t 
         Nothing -> False
-isSubtype ctx (TArrow s1 s2) (TArrow t1 t2) = 
-    
+isSubtype ctx (TArrow s1 s2) (TArrow t1 t2) = isSubtype ctx t1 s1 && isSubtype ctx s2 t2    
+isSubtype ctx (TForall a1 s1 s2) (TForall b1 t1 t2) = 
+    isSubtype ctx t1 s1 && 
+    let ctx' = extendTypeVar a1 t1 ctx 
+    in isSubtype ctx' s2 (substType b1 (TVar a1) t2)
+isSubtype _ _ _ = False
 
 isVal :: Term -> Bool
 isVal (Lam _ _ _) = True
@@ -295,3 +308,75 @@ eval t = case eval1 t of
     Nothing -> t
     Just t' -> eval t'
 
+sBool :: Type
+sBool = TForall "X" TTop
+          (TForall "T" (TVar "X")
+            (TForall "F" (TVar "X")
+              (TArrow (TVar "T")
+                (TArrow (TVar "F") (TVar "X")))))
+
+sTrue :: Type
+sTrue = TForall "X" TTop
+          (TForall "T" (TVar "X")
+            (TForall "F" (TVar "X")
+              (TArrow (TVar "T")
+                (TArrow (TVar "F") (TVar "T"))))) 
+
+sFalse :: Type
+sFalse = TForall "X" TTop
+          (TForall "T" (TVar "X")
+            (TForall "F" (TVar "X")
+              (TArrow (TVar "T")
+                (TArrow (TVar "F") (TVar "F")))))
+
+tru :: Term 
+tru = TyAbs "X" TTop 
+    (TyAbs "T" (TVar "X") 
+        (TyAbs "F" (TVar "X")
+            (Lam "t" (TVar "T")
+                (Lam "f" (TVar "F")
+                    (Var "t")))))
+
+fls :: Term 
+fls = TyAbs "X" TTop 
+    (TyAbs "T" (TVar "X") 
+        (TyAbs "F" (TVar "X")
+            (Lam "t" (TVar "T")
+                (Lam "f" (TVar "F")
+                    (Var "f")))))
+
+notftTerm :: Term
+notftTerm = Lam "b" sFalse
+              (TyAbs "X" TTop
+                (TyAbs "T" (TVar "X")
+                  (TyAbs "F" (TVar "X")
+                    (Lam "t" (TVar "T")
+                      (Lam "f" (TVar "F")
+                        (TyApp
+                          (TyApp
+                            (TyApp (Var "b") (TVar "X"))
+                            (TVar "F"))
+                          (TVar "T")
+                        `App` (Var "f")
+                        `App` (Var "t")))))))
+
+nottfTerm :: Term
+nottfTerm = Lam "b" sTrue
+              (TyAbs "X" TTop
+                (TyAbs "T" (TVar "X")
+                  (TyAbs "F" (TVar "X")
+                    (Lam "t" (TVar "T")
+                      (Lam "f" (TVar "F")
+                        (TyApp
+                          (TyApp
+                            (TyApp (Var "b") (TVar "X"))
+                            (TVar "F"))
+                          (TVar "T")
+                        `App` (Var "f")
+                        `App` (Var "t")))))))
+
+notftType :: Type
+notftType = TArrow sFalse sTrue 
+
+nottfType :: Type 
+nottfType = TArrow sTrue sFalse 
