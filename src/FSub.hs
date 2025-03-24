@@ -64,11 +64,6 @@ typeVarInContext a (Context _ types) = any ((==) a . fst) types
 freshVar :: String -> Set.Set String -> String
 freshVar x vars = head $ filter (\v -> Set.notMember v vars) $ map (\n -> x ++ replicate n '\'') [1..]
 
--- from TAPL 22.3.9
-freshVarPreAlloc :: FreshVarSeq -> (Type, FreshVarSeq)
-freshVarPreAlloc [] = error "Exhausted the supply of fresh variable names"
-freshVarPreAlloc (v:vs) = (TVar v, vs)
-
 freeTypeVars :: Type -> Set.Set String
 freeTypeVars (TVar a) = Set.singleton a
 freeTypeVars (TArrow t1 t2) = Set.union (freeTypeVars t1) (freeTypeVars t2)
@@ -153,10 +148,10 @@ substTerm x s (Lam v t u)
         else
             let fresh = freshVar x (Set.union(freeTermVars s) (freeTermVars u))
             in Lam fresh t (substTerm x s (substTerm v (Var fresh) u))
-substTerm x s (TyAbs v t) =
+substTerm x s (TyAbs v bound t) =
     if Set.notMember x $ freeTermVars t
-            then TyAbs v t
-            else TyAbs v (substTerm x s t)
+            then TyAbs v bound t
+            else TyAbs v bound (substTerm x s t)
 substTerm x s (App t1 t2) = App (substTerm x s t1) (substTerm x s t2)
 substTerm x s (TyApp t typ) = TyApp (substTerm x s t) typ
 substTerm _ _ Unit = Unit
@@ -173,8 +168,9 @@ substTerm x s (TIf e1 e2 e3) = TIf (substTerm x s e1) (substTerm x s e2) (substT
 isWellFormedType :: Context -> Type -> Bool
 isWellFormedType ctx (TVar v) = typeVarInContext v ctx
 isWellFormedType ctx (TArrow t1 t2) = isWellFormedType ctx t1 && isWellFormedType ctx t2
-isWellFormedType ctx (TForall v t) =
-    let extendedCtx = extendTypeVar v ctx
+isWellFormedType ctx (TForall v bound t) =
+    isWellFormedType ctx bound && 
+    let extendedCtx = extendTypeVar v bound ctx
     in isWellFormedType extendedCtx t
 isWellFormedType _ TUnit = True
 isWellFormedType _ TNat = True
@@ -190,10 +186,13 @@ typeOf ctx (Lam x t1 v) = do
             let ctx' = extendContext x t1 ctx
             t2 <- typeOf ctx' v
             return (TArrow t1 t2)
-typeOf ctx (TyAbs v t1) = do
-    let ctx' = extendTypeVar v ctx
-    t2 <- typeOf ctx' t1
-    return (TForall v t2)
+typeOf ctx (TyAbs v bound t1) = do
+    if not $ isWellFormedType ctx bound 
+        then Nothing
+    else do 
+        let ctx' = extendTypeVar v bound ctx
+        t2 <- typeOf ctx' t1
+        return (TForall v bound t2)
 typeOf ctx (App t1 t2) = do
     t1' <- typeOf ctx t1
     t2' <- typeOf ctx t2
@@ -206,7 +205,7 @@ typeOf ctx (TyApp t typ) = do
     else do
         t12 <- typeOf ctx t
         case t12 of
-            TForall v body -> Just (substType v typ body)
+            TForall v bound body -> Just (substType v typ body)
             _ -> Nothing
 typeOf _ Unit = Just TUnit
 typeOf _ Zero = Just TNat
@@ -231,9 +230,19 @@ typeOf ctx (TIf e1 e2 e3) = do
         then Just t2
         else Nothing
 
+isSubtype :: Context -> Type -> Type -> Bool
+isSubtype _ s TTop = True
+isSubtype _ v t | v == t = True
+isSubtype ctx (TVar a) t = 
+    case lookupTypeVar a ctx of
+        Just bound -> isSubtype ctx bound t 
+        Nothing -> False
+isSubtype ctx (TArrow s1 s2) (TArrow t1 t2) = 
+    
+
 isVal :: Term -> Bool
 isVal (Lam _ _ _) = True
-isVal (TyAbs _ _) = True
+isVal (TyAbs _ _ _) = True
 isVal (Var _) = True
 isVal (Succ e) = isVal e
 isVal (Pred e) = isVal e
@@ -248,7 +257,7 @@ isVal _ = False
 eval1 :: Term -> Maybe Term
 eval1 (Var _) = Nothing
 eval1 (Lam _ _ _) = Nothing
-eval1 (TyAbs _ _) = Nothing
+eval1 (TyAbs _ _ _) = Nothing
 eval1 (App t1 t2) = case t1 of
     Lam x typ t12 | isVal t2 -> Just (substTerm x t2 t12)
     _ -> case eval1 t1 of
@@ -268,7 +277,7 @@ eval1 (IsZero t) = case t of
      _ -> case eval1 t of
          Just t' -> Just (IsZero t')
          Nothing -> Nothing
-eval1 (TyApp (TyAbs v t12) t2) = Just (substTypeInTerm v t2 t12)
+eval1 (TyApp (TyAbs v _ t12) t2) = Just (substTypeInTerm v t2 t12)
 eval1 (TyApp t typ) = case eval1 t of
     Just t' -> Just (TyApp t' typ)
     Nothing -> Nothing
@@ -286,121 +295,3 @@ eval t = case eval1 t of
     Nothing -> t
     Just t' -> eval t'
 
-isNormalForm :: Term -> Bool
-isNormalForm t = case eval1 t of
-    Nothing -> True
-    Just _ -> False
-
-stepsToNormalForm :: Term -> Int
-stepsToNormalForm t = case eval1 t of
-    Nothing -> 0
-    Just t' -> 1 + stepsToNormalForm t'
-
--- generator approach from tapl 22.3.10
--- use a recursive generator for fresh type variables
-data UVarGen = NextUVar String UVarGen
-
-initialUVarGen :: UVarGen
-initialUVarGen = go 0
-    where go n = NextUVar ("?X_" ++ show n) (go (n+1))
-
-freshGenVar :: UVarGen -> (Type, UVarGen)
-freshGenVar (NextUVar name nextGen) = (TVar name, nextGen)
-
--- state monad approach
-freshStateVar :: State String Type
-freshStateVar = do
-    current <- get
-    put (current ++ "'")
-    return $ TVar current
-
-inferNatOperation :: Context -> Term -> Type -> UVarGen -> (Type, ConstraintSet, UVarGen)
-inferNatOperation ctx subterm resultType freshVarGen =
-    let (subtype, constraints, freshVarGen1) = inferConstraints ctx subterm freshVarGen
-        newConstraints = constraints ++ [(subtype, TNat)]
-    in
-        (resultType, newConstraints, freshVarGen1)
-
-inferConstraints :: Context -> Term -> UVarGen -> (Type, ConstraintSet, UVarGen)
-inferConstraints ctx (Var v) freshVarGen = case lookupVar v ctx of
-    Just t -> (t, [], freshVarGen)
-    Nothing -> error $ "Unbound variable: " ++ v
-inferConstraints ctx (Lam x t1 t2) freshVarGen =
-    let extendedCtx = extendContext x t1 ctx
-        (bodytype, constraints, freshVarGen') = inferConstraints extendedCtx t2 freshVarGen
-     in (TArrow t1 bodytype, constraints, freshVarGen')
-inferConstraints ctx (App t1 t2) freshVarGen =
-    let (type1, constraints1, freshVarGen1) = inferConstraints ctx t1 freshVarGen
-        (type2, constraints2, freshVarGen2) = inferConstraints ctx t2 freshVarGen1
-        (resultType, freshVarGen3) = freshGenVar freshVarGen2
-        newConstraint = (type1, TArrow type2 resultType)
-        allConstraints = constraints1 ++ constraints2 ++ [newConstraint]
-    in
-        (resultType, allConstraints, freshVarGen3)
-inferConstraints ctx Zero freshVarGen = (TNat, [], freshVarGen)
--- CT-Succ, CT-Pred, CT-IsZero result in duplicating code so instead use a helper to generalize the rules.
-inferConstraints ctx (Succ e) freshVarGen = inferNatOperation ctx e TNat freshVarGen
-inferConstraints ctx (Pred e) freshVarGen = inferNatOperation ctx e TNat freshVarGen
-inferConstraints ctx (IsZero e) freshVarGen = inferNatOperation ctx e TAns freshVarGen
-inferConstraints ctx TTrue freshVarGen = (TBool, [], freshVarGen)
-inferConstraints ctx TFalse freshVarGen = (TBool, [], freshVarGen)
-inferConstraints ctx (TIf e1 e2 e3) freshVarGen =
-    let (e1type, e1constraints, freshVarGen1) = inferConstraints ctx e1 freshVarGen
-        (e2type, e2constraints, freshVarGen2) = inferConstraints ctx e2 freshVarGen1
-        (e3type, e3constraints, freshVarGen3) = inferConstraints ctx e3 freshVarGen2
-        condConstraint = [(e1type, TBool)]
-        branchConstraint = [(e2type, e3type)]
-        allConstraints = e1constraints ++ e2constraints ++ e3constraints ++ condConstraint ++ branchConstraint
-    in
-        (e2type, allConstraints, freshVarGen3)
-
-type Substitution = Map.Map String Type
-
-emptySubst :: Substitution
-emptySubst = Map.empty
-
-singleSubst :: String -> Type -> Substitution
-singleSubst x t = Map.insert x t emptySubst
-
-applySubst :: Substitution -> Type -> Type
-applySubst subst ty =
-    Map.foldrWithKey (\var replacement result ->
-                       substType var replacement result)
-                     ty
-                     subst
-
-composeSubst :: Substitution -> Substitution -> Substitution
-composeSubst s1 s2 =
-    let s2Applied = Map.map (applySubst s1) s2
-    in Map.union s2Applied s1
-
-unify :: Type -> Type -> Maybe Substitution
-unify t1 t2 = unifyConstraints [(t1, t2)]
-
-unifyConstraints :: ConstraintSet -> Maybe Substitution
-unifyConstraints [] = Just emptySubst
-unifyConstraints ((t1, t2):rest)
-    | t1 == t2 = unifyConstraints rest
-    | TVar v <- t1, not (v `Set.member` freeTypeVars t2) =
-        let subst = singleSubst v t2
-            rest' = map (\(a, b) -> (applySubst subst a, applySubst subst b)) rest
-        in do
-            result <- unifyConstraints rest'
-            return (composeSubst result subst)
-    | TVar v <- t2, not (v `Set.member` freeTypeVars t1) =
-        let subst = singleSubst v t1
-            rest' = map (\(a, b) -> (applySubst subst a, applySubst subst b)) rest
-        in do
-            result <- unifyConstraints rest'
-            return (composeSubst result subst)
-    | TArrow s1 s2 <- t1, TArrow t1' t2' <- t2 =
-        let newConstraints = [(s1, t1'), (s2,t2')]
-        in unifyConstraints (newConstraints ++ rest)
-    | otherwise = Nothing
-
-inferPrincipalType :: Context -> Term -> Maybe Type
-inferPrincipalType ctx t1 =
-    let (inferredType, constraints, _) = inferConstraints ctx t1 initialUVarGen
-    in do
-        subst <- unifyConstraints constraints
-        return (applySubst subst inferredType)
