@@ -9,6 +9,7 @@ data Type
     = TVar String
     | TArrow Type Type
     | TForall String Type Type
+    | TExists String Type Type
     | TUnit
     | TNat
     | TAns
@@ -22,6 +23,8 @@ data Term
     | App Term Term
     | TyAbs String Type Term
     | TyApp Term Type
+    | Pack Type Term Type 
+    | Unpack String String Term Term 
     | Unit
     | Zero
     | Succ Term
@@ -68,6 +71,7 @@ freeTypeVars :: Type -> Set.Set String
 freeTypeVars (TVar a) = Set.singleton a
 freeTypeVars (TArrow t1 t2) = Set.union (freeTypeVars t1) (freeTypeVars t2)
 freeTypeVars (TForall a bound t) = Set.union (freeTypeVars bound) (Set.delete a (freeTypeVars t)) 
+freeTypeVars (TExists a bound t) = Set.union (freeTypeVars bound) (Set.delete a (freeTypeVars t))
 freeTypeVars TUnit = Set.empty
 freeTypeVars TNat = Set.empty
 freeTypeVars TAns = Set.empty
@@ -99,6 +103,11 @@ substType a s (TForall v bound t)
     | otherwise = if Set.notMember v (freeTypeVars s) then TForall v (substType a s bound) (substType a s t)
         else let fresh = freshVar v (Set.union (freeTypeVars t) (freeTypeVars s))
         in TForall fresh (substType a s bound) (substType a s (substType v (TVar fresh) t))
+substType a s (TExists v bound t) 
+    | a == v = TExists v bound t 
+    | otherwise = if Set.notMember v (freeTypeVars s) then TExists v (substType a s bound) (substType a s t)
+        else let fresh = freshVar v (Set.union (freeTypeVars t) (freeTypeVars s))
+        in TExists fresh (substType a s bound) (substType a s (substType v (TVar fresh) t))
 substType _ _ TUnit = TUnit
 substType _ _ TNat = TNat
 substType _ _ TBool = TBool
@@ -172,6 +181,10 @@ isWellFormedType ctx (TForall v bound t) =
     isWellFormedType ctx bound && 
     let extendedCtx = extendTypeVar v bound ctx
     in isWellFormedType extendedCtx t
+isWellFormedType ctx (TExists v bound t) = 
+    isWellFormedType ctx bound && 
+    let extendedCtx = extendTypeVar v bound ctx 
+    in isWellFormedType extendedCtx t
 isWellFormedType _ TUnit = True
 isWellFormedType _ TNat = True
 isWellFormedType _ TAns = True
@@ -238,6 +251,30 @@ typeOf ctx (TIf e1 e2 e3) = do
             then Just t3
             else Just t2
         else Nothing
+typeOf ctx (Pack witness_type term exists_type) = do
+    if not $ isWellFormedType ctx exists_type
+        then Nothing
+        else case exists_type of
+            TExists a bound body -> do
+                if not $ isSubtype ctx witness_type bound
+                    then Nothing
+                    else do
+                        term_type <- typeOf ctx term 
+                        let expected_type = substType a witness_type body 
+                        if isSubtype ctx term_type expected_type 
+                            then Just exists_type
+                            else Nothing
+            _ -> Nothing
+typeOf ctx (Unpack a x packed body) = do
+    packed_type <- typeOf ctx packed
+    case packed_type of
+        TExists a' bound t -> do 
+            let ctx' = extendTypeVar a bound $ extendContext x t ctx 
+            body_type <- typeOf ctx' body
+            if Set.member a (freeTypeVars body_type)
+                then Nothing
+                else Just body_type
+        _ -> Nothing
 
 isSubtype :: Context -> Type -> Type -> Bool
 isSubtype _ s TTop = True
@@ -251,6 +288,10 @@ isSubtype ctx (TForall a1 s1 s2) (TForall b1 t1 t2) =
     isSubtype ctx t1 s1 && 
     let ctx' = extendTypeVar a1 t1 ctx 
     in isSubtype ctx' s2 (substType b1 (TVar a1) t2)
+isSubtype ctx (TExists a1 s1 s2) (TExists b1 t1 t2) = 
+    isSubtype ctx t1 t2 &&
+    let ctx' = extendTypeVar a1 s1 ctx
+    in isSubtype ctx' (substType b1 (TVar a1) t2) s2 
 isSubtype _ _ _ = False
 
 isVal :: Term -> Bool
@@ -265,6 +306,7 @@ isVal Yes = True
 isVal No = True
 isVal TTrue = True
 isVal TFalse = True
+isVal (Pack _ term _) = isVal term
 isVal _ = False
 
 eval1 :: Term -> Maybe Term
@@ -301,6 +343,17 @@ eval1 (TIf e1 e2 e3) =
         _ -> case eval1 e1 of
                 Just e1' -> Just (TIf e1' e2 e3)
                 Nothing -> Nothing
+eval1 (Pack witness_type term target_type) = 
+    case eval1 term of
+        Just term' -> Just (Pack witness_type term' target_type)
+        Nothing -> Nothing
+eval1 (Unpack a x packed body) =
+    case packed of
+        Pack witness_type value _ | isVal value -> 
+            Just (substTerm x value (substTypeInTerm a witness_type body))
+        _ -> case eval1 packed of
+            Just packed' -> Just (Unpack a x packed' body)
+            Nothing -> Nothing
 eval1 _ = Nothing
 
 eval :: Term -> Term
@@ -380,3 +433,5 @@ notftType = TArrow sFalse sTrue
 
 nottfType :: Type 
 nottfType = TArrow sTrue sFalse 
+
+-- minimalXFreeSupertype :: Set.Set String -> Context -> Type -> Type
