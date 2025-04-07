@@ -37,7 +37,8 @@ data Term = Var String
           | IsZero Term
           | If Term Term Term
           | Fold Type Term
-          | Unfold Term 
+          | Unfold Term
+          | Fix Term
           deriving (Show, Eq)
 
 nat :: Int -> Term
@@ -132,6 +133,11 @@ typeOf ctx (Unfold term) =
     case typeOf ctx term of
         Just (TRec x bodyType) -> Just (substType x (TRec x bodyType) bodyType)
         _ -> Nothing
+typeOf ctx (Fix t) =
+    case typeOf ctx t of
+        Just (TArrow t1 t2) | t1 == t2 -> Just t1
+        _ -> Nothing
+
 typeOfStore :: Context -> StoreContext -> Term -> Maybe Type
 typeOfStore ctx storeCtx (Loc s) = case lookupStoreType s storeCtx of
     Nothing -> Nothing
@@ -227,6 +233,7 @@ freeVars Unit = Set.empty
 freeVars (Loc _) = Set.empty
 freeVars (Fold _ t) = freeVars t
 freeVars (Unfold t) = freeVars t
+freeVars (Fix t) = freeVars t
 
 freshVar :: String -> Set.Set String -> String
 freshVar x vars = head $ filter (\v -> Set.notMember v vars) $ map (\n -> x ++ replicate n '\'') [1..]
@@ -259,6 +266,7 @@ subst x s (IsZero t) = IsZero (subst x s t)
 subst x s (If t1 t2 t3) = If (subst x s t1) (subst x s t2) (subst x s t3)
 subst x s (Fold typ t) = Fold typ (subst x s t)
 subst x s (Unfold t) = Unfold (subst x s t)
+subst x s (Fix t) = Fix (subst x s t)
 subst _ _ Zero = Zero
 subst _ _ Yes = Yes
 subst _ _ No = No
@@ -332,6 +340,11 @@ eval1 (Unfold t) = case t of
     Fold _ v | isVal v -> Just v
     _ -> case eval1 t of
         Just t' -> Just (Unfold t')
+        Nothing -> Nothing
+eval1 (Fix t) = case t of
+    Lam x typ body -> Just (subst x (Fix t) body) 
+    _ -> case eval1 t of
+        Just t' -> Just (Fix t')
         Nothing -> Nothing
 eval1 _ = Nothing
 -- head reduction strategy for Tait's method 
@@ -500,3 +513,36 @@ factRef =
 
 testFactRef :: Term
 testFactRef = evalStore factRef emptyStore
+
+streamType :: Type
+streamType = TRec "A" (TArrow TUnit (TProd TNat (TVar "A")))
+
+streamHead :: Term -> Term
+streamHead s = Proj1 (App (Unfold s) Unit)
+
+streamTail :: Term -> Term
+streamTail s = Proj2 (App (Unfold s) Unit)
+
+fibStream :: Term
+fibStream = App (App
+        (Fix
+            (Lam "f" (TArrow TNat (TArrow TNat streamType)) 
+                (Lam "m" TNat 
+                    (Lam "n" TNat
+                        (Fold streamType 
+                            (Lam "_" TUnit
+                                (Pair 
+                                    (Var "n")
+                                        (App
+                                            (App (Var "f") (Var "n"))
+                                            (App (App plus (Var "m")) (Var "n"))
+                                            )
+                                        )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        (nat 0))
+    (nat 1)
