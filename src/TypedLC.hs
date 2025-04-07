@@ -12,7 +12,9 @@ data Type = TBool
     | TRecord [(String, Type)]
     | TArr [(Type, Type)]
     | TRef Type
-    | TNat
+    | TNat 
+    | TRec String Type
+    | TVar String
     deriving (Show, Eq)
 
 data Term = Var String
@@ -34,6 +36,8 @@ data Term = Var String
           | Pred Term
           | IsZero Term
           | If Term Term Term
+          | Fold Type Term
+          | Unfold Term 
           deriving (Show, Eq)
 
 nat :: Int -> Term
@@ -118,7 +122,16 @@ typeOf ctx (If t1 t2 t3) = case typeOf ctx t1 of
         (Just t2type, Just t3type) | t2type == t3type -> Just t2type
         _ -> Nothing
     _ -> Nothing
-
+typeOf ctx (Fold recType@(TRec x bodyType) term) = 
+    case typeOf ctx term of
+        Just t ->
+            let unfolded = substType x recType bodyType
+            in if t == unfolded then Just recType else Nothing
+        Nothing -> Nothing
+typeOf ctx (Unfold term) = 
+    case typeOf ctx term of
+        Just (TRec x bodyType) -> Just (substType x (TRec x bodyType) bodyType)
+        _ -> Nothing
 typeOfStore :: Context -> StoreContext -> Term -> Maybe Type
 typeOfStore ctx storeCtx (Loc s) = case lookupStoreType s storeCtx of
     Nothing -> Nothing
@@ -212,6 +225,8 @@ freeVars Yes = Set.empty
 freeVars No = Set.empty
 freeVars Unit = Set.empty
 freeVars (Loc _) = Set.empty
+freeVars (Fold _ t) = freeVars t
+freeVars (Unfold t) = freeVars t
 
 freshVar :: String -> Set.Set String -> String
 freshVar x vars = head $ filter (\v -> Set.notMember v vars) $ map (\n -> x ++ replicate n '\'') [1..]
@@ -242,11 +257,30 @@ subst x s (Succ t) = Succ (subst x s t)
 subst x s (Pred t) = Pred (subst x s t)
 subst x s (IsZero t) = IsZero (subst x s t)
 subst x s (If t1 t2 t3) = If (subst x s t1) (subst x s t2) (subst x s t3)
+subst x s (Fold typ t) = Fold typ (subst x s t)
+subst x s (Unfold t) = Unfold (subst x s t)
 subst _ _ Zero = Zero
 subst _ _ Yes = Yes
 subst _ _ No = No
 subst _ _ Unit = Unit
 subst _ _ (Loc l) = Loc l
+
+substType :: String -> Type -> Type -> Type 
+substType x s (TVar y) | x == y = s
+substType _ _ (TVar y) = TVar y
+substType x s (TRec y t) | x == y = TRec y t
+substType x s (TRec y t) = TRec y (substType x s t) 
+substType x s (TArrow t1 t2) = TArrow (substType x s t1) (substType x s t2)
+substType x s (TProd t1 t2) = TProd (substType x s t1) (substType x s t2)
+substType x s (TRef t) = TRef (substType x s t)
+substType x s (TRecord fields) = TRecord [(l, substType x s t) | (l, t) <- fields]
+substType x s (TArr pairs) = TArr [(substType x s t1, substType x s t2) | (t1, t2) <- pairs]
+substType _ _ TBool = TBool
+substType _ _ TUnit = TUnit
+substType _ _ TNat = TNat
+substType _ _ TTop = TTop
+substType _ _ TBottom = TBottom
+substType _ _ TAns = TAns
 
 isVal :: Term -> Bool
 isVal (Lam v typ t) = True
@@ -256,6 +290,7 @@ isVal Unit = True
 isVal (Pair _ _) = True 
 isVal Zero = True
 isVal (Succ t) | isVal t = True
+isVal (Fold _ v) | isVal v = True
 isVal _ = False 
 
 -- call by value strategy
@@ -289,6 +324,14 @@ eval1 (If t1 t2 t3) = case t1 of
     No -> Just t3
     _ -> case eval1 t1 of
         Just t1' -> Just (If t1' t2 t3)
+        Nothing -> Nothing
+eval1 (Fold typ t) = case eval1 t of
+    Just t' -> Just (Fold typ t')
+    Nothing -> Nothing
+eval1 (Unfold t) = case t of
+    Fold _ v | isVal v -> Just v
+    _ -> case eval1 t of
+        Just t' -> Just (Unfold t')
         Nothing -> Nothing
 eval1 _ = Nothing
 -- head reduction strategy for Tait's method 
@@ -457,4 +500,3 @@ factRef =
 
 testFactRef :: Term
 testFactRef = evalStore factRef emptyStore
-
