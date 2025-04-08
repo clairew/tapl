@@ -546,3 +546,75 @@ fibStream = App (App
             )
         (nat 0))
     (nat 1)
+
+counterType :: Type
+counterType = TRec "C" (TRecord [
+    ("get", TNat),
+    ("inc", TArrow TUnit (TVar "C")),
+    ("dec", TArrow TUnit (TVar "C")),
+    ("backup", TArrow TUnit (TVar "C")),
+    ("reset", TArrow TUnit (TVar "C"))
+    ])
+
+counter :: Term 
+counter = App
+    (Fix 
+        (Lam "f" (TArrow (TRecord[("x", TNat), ("backup", TNat)]) counterType)
+            (Lam "s" (TRecord[("x", TNat), ("backup", TNat)])
+                (Fold counterType
+                    (Record[
+                        ("get", Proj1(Record[("1", (Var "x"))])),
+                        ("inc", Lam "_" TUnit
+                            (App (Var "f")
+                                (Record [
+                                ("x", Succ (Proj1(Record[("1", (Var "x"))]))),
+                                ("backup", Proj2(Record [("2", (Var "x"))]))
+                                ])
+                            )
+                        ),
+                        ("dec", Lam "_" TUnit
+                            (App (Var "f")
+                                (Record [
+                                ("x", Succ (Proj1(Record[("1", (Var "x"))]))),
+                                ("backup", Proj2(Record [("2", (Var "x"))]))
+                                ])
+                            )
+                        ),
+                        ("backup", Lam "_" TUnit 
+                            (App (Var "f")
+                            (Record [
+                                ("x", (Proj1(Record[("1", (Var "x"))]))),
+                                ("backup", Proj1(Record [("1", (Var "x"))]))
+                                ])
+                            )
+                        ),
+                        ("reset", Lam "_" TUnit 
+                            (App (Var "f")
+                            (Record [
+                                ("x", (Proj2(Record[("2", (Var "x"))]))),
+                                ("backup", Proj2(Record [("2", (Var "x"))]))
+                                ])
+                            )
+                        )
+                    ])
+                )
+            )
+        )
+    )
+    (Record [("x", nat 0), ("backup", nat 0)])
+
+diverge :: Type -> Term 
+diverge t = 
+    Lam "_" TUnit 
+        Fix (Lam "x" t (Var "x")))
+
+dType :: Type
+dType = TRec "X" (TArrow (TVar "X") (TVar "X"))
+
+
+-- injection function
+lam :: Term -> Term
+lam t = Fold dType t
+
+ap :: Term -> Term -> Term
+ap t1 t2 = App (Unfold t1) t2
