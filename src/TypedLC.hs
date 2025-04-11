@@ -606,15 +606,87 @@ counter = App
 diverge :: Type -> Term 
 diverge t = 
     Lam "_" TUnit 
-        Fix (Lam "x" t (Var "x")))
+        (Fix (Lam "x" t (Var "x")))
 
 dType :: Type
 dType = TRec "X" (TArrow (TVar "X") (TVar "X"))
 
+lam :: Term
+lam = Lam "f" (TArrow dType dType) 
+        (Fold dType (Var "f"))
 
--- injection function
-lam :: Term -> Term
-lam t = Fold dType t
+ap :: Term
+ap = Lam "f" dType
+       (Lam "a" dType 
+         (App (Unfold (Var "f")) (Var "a")))
 
-ap :: Term -> Term -> Term
-ap t1 t2 = App (Unfold t1) t2
+extendedDType :: Type 
+extendedDType =  TRec "X" (TRecord[
+    ("nat", TNat),
+    ("fn", TArrow (TVar "X") (TVar "X")),
+    ("bool", TAns)
+    ])
+
+natD :: Term -> Term
+natD n = Fold extendedDType (Record [("nat", n)])
+
+lamD :: Term -> Term
+lamD f = Fold extendedDType (Record [("fn", f)])
+
+truD :: Term
+truD = Fold extendedDType (Record [("bool", Yes)])
+
+flsD :: Term
+flsD = Fold extendedDType (Record [("bool", No)])
+
+apD :: Term
+apD = Lam "f" extendedDType
+      (Lam "a" extendedDType
+        (App
+          (App
+            (Lam "fn" (TArrow extendedDType extendedDType)
+              (App (Var "fn") (Var "a")))
+            (Lam "nat" TNat
+              (App (diverge extendedDType) Unit)))
+          (Unfold (Var "f"))))
+
+sucD :: Term
+sucD = Lam "f" extendedDType 
+        (App
+            (App
+                (Lam "nat" TNat
+                    (Fold extendedDType (Record[("nat", Succ (Var "n"))])))
+                (Lam "other" (TArrow extendedDType extendedDType)
+                    (App (diverge extendedDType) Unit)))
+            (Unfold (Var "f")))
+
+zroD :: Term
+zroD = Fold extendedDType (Record[("nat", Zero)])
+
+ifElseD :: Term 
+ifElseD = Lam "if" extendedDType
+    (Lam "then" extendedDType
+        (Lam "else" extendedDType
+            (App
+                (App
+                    (Lam "bool" TAns
+                        (If (Var "bool") (Var "then") (Var "else")))
+                    (Lam "other" TUnit
+                        (App (diverge extendedDType) Unit)))
+                (Unfold (Var "if")))))
+
+-- if false then 1 else 0 
+ifFalse1 :: Term 
+ifFalse1 = App
+    (App
+        (App ifElseD flsD)
+        (Fold extendedDType (Record[("nat", nat 1)])))
+    (Fold extendedDType (Record[("nat", Zero)]))
+
+-- if false then 1 else false 
+ifFalse2 :: Term 
+ifFalse2 = App
+    (App
+        (App ifElseD flsD)
+        (Fold extendedDType (Record[("nat", nat 1)])))
+    (flsD)
