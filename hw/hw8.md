@@ -177,7 +177,23 @@ ifFalse2 = App
 ```
 
 ### 21.5.2 
-- $S_f$ and $S$ are invertible.
+- $S_f$ and $S$ are invertible. Invertibility depends on the structure of the generating form, not the domain. $S_f$ and $S$ have identical rule structures. 
     - Case 1: {${(T,Top) | T \in T_f}$} - Since case 1 doesn't rely on $R$, the generating set is $\emptyset$. 
     - Case 2: {$(S_1 X S_2, T_1 X T_2) | (S_1, T_1), (S_2,T_2) \in R$}. The generating minimal set is {$(S_1, T_1), (S_2, T_2)$}. 
     - Case 3: {$(S_1 \rightarrow S_2, T_1 \rightarrow T_2) | (T_1,S_1), (S_2,T_2) \in R$}. The generating minimal set is {$(T_1,S_1),(S_2,T_2)$}
+- Support functions for $S_f$ and $S$. They are identifical because the structure of the generating functions are the same, and have the same 3 clauses. 
+    - support $S_f (S,T) =$
+        - $\emptyset$ if $(S,T)$ is of the form $(T,Top)$
+        - {$(S_1, T_1), (S_2, T_2)$} if $(S,T)$ is of the form $(S_1 X S_2, T_1 X T_2)$
+        - {$(T_1,S_1),(S_2,T_2)$} if $(S,T)$ is of the form $(S_1 \rightarrow S_2, T_1 \rightarrow T_2)$ 
+        - $\uparrow$ otherwise 
+
+### 21.5.6
+
+### 21.5.13 
+#### Prove - If $lfp_f(X)$ = true, then $X \subseteq \mu F$
+For $lfp_f(X)$ = true, either $X=\emptyset$ or $lfp(support(X))$= true. When $X = \emptyset$, $X \subseteq \mu F$. If $lfp(support(X))$ = true, then by IH, $support(X) \subseteq \mu F$, and by lemma 21.5.8, $X \subseteq \mu F$. 
+
+#### Prove - If $lfp_f(X)$ = false, then $X \not\subseteq \mu F$. 
+For $lfp_f(X)$ = false, either $support(X) \uparrow$ or $lfp(support(X)) \uparrow$. By lemma 21.5.8, since $support(X) \uparrow$, $X \not\subseteq \mu F$. If $lfp(support(X))$ = false, and by IH $support(X) \not\subseteq \mu F$, then by lemma 21.5.8  $X \not\subseteq \mu F$.
+
