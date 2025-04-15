@@ -251,12 +251,15 @@ Fold (TRec "X" (TRecord [("nat",TNat),("fn",TArrow (TVar "X") (TVar "X")),("bool
         - $\uparrow$ otherwise 
 
 ### 21.5.6
-
+No because the generating function could be an infinite sequence - for example, a generator function that continues to increment the result in the previous call in the current call, and passes that to the next call, and so on. 
 
 ### 21.5.13 
-#### Prove - If $lfp_f(X)$ = true, then $X \subseteq \mu F$
-For $lfp_f(X)$ = true, either $X=\emptyset$ or $lfp(support(X))$= true. When $X = \emptyset$, $X \subseteq \mu F$. If $lfp(support(X))$ = true, then by IH, $support(X) \subseteq \mu F$, and by lemma 21.5.8, $X \subseteq \mu F$. 
+#### Prove - If $lfp_F(X)$ = true, then $X \subseteq \mu F$
+For $lfp_F(X)$ = true, either $X=\emptyset$ or $lfp(support(X))$= true. When $X = \emptyset$, $X \subseteq \mu F$. If $lfp(support(X))$ = true, then by IH, $support(X) \subseteq \mu F$, and by lemma 21.5.8, $X \subseteq \mu F$. 
 
-#### Prove - If $lfp_f(X)$ = false, then $X \not\subseteq \mu F$. 
-For $lfp_f(X)$ = false, either $support(X) \uparrow$ or $lfp(support(X)) \uparrow$. By lemma 21.5.8, since $support(X) \uparrow$, $X \not\subseteq \mu F$. If $lfp(support(X))$ = false, and by IH $support(X) \not\subseteq \mu F$, then by lemma 21.5.8  $X \not\subseteq \mu F$.
+#### Prove - If $lfp_F(X)$ = false, then $X \not\subseteq \mu F$. 
+For $lfp_F(X)$ = false, either $support(X) \uparrow$ or $lfp(support(X)) \uparrow$. By lemma 21.5.8, since $support(X) \uparrow$, $X \not\subseteq \mu F$. If $lfp(support(X))$ = false, and by IH $support(X) \not\subseteq \mu F$, then by lemma 21.5.8  $X \not\subseteq \mu F$.
 
+What would prevent $lfp_F$ from terminating is if $support(X)$ doesn't reduce $X$ or $support(X) \downarrow$. 
+
+A class of generating function where $lfp_F$ would terminate could be size-reducing generating functions - for any non-empty set $X$, $|support(X)| < |X|$, and support($\emptyset$) = $\emptyset$. Each recursive support call reduces $X$, and after at most $|X|$ steps, we reach the empty set. When we reach $\emptyset$, $lfp_F$ terminates. 
