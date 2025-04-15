@@ -130,6 +130,52 @@ counter = App
 
 ### 20.1.4
 ```
+data Term = Case Term [(String, String, Term)]
+typeOf ctx (Case t branches) = 
+  case typeOf ctx t of
+    Just (TRecord fields) ->
+      let branchTypes = map (\(tag, var, branch) -> 
+                             case lookup tag fields of
+                               Just fieldType -> 
+                                 typeOf (extendContext var fieldType ctx) branch
+                               Nothing -> Nothing) branches
+      in if all isJust branchTypes && allEqual (catMaybes branchTypes)
+         then Just (head (catMaybes branchTypes)) 
+         else Nothing
+    _ -> Nothing
+  where
+    allEqual [] = True
+    allEqual (x:xs) = all (== x) xs
+freeVars (Case t branches) = 
+    Set.union 
+        (freeVars t)
+        (Set.unions [Set.delete var (freeVars branch) | (tag, var, branch) <- branches])
+subst x s (Case t branches) =
+    Case (subst x s t)
+        [(tag, var, if x == var 
+                    then branch 
+                    else if Set.member var (freeVars s)
+                         then let fresh = freshVar var (freeVars s)
+                              in subst x s (subst var (Var fresh) branch)
+                         else subst x s branch) 
+         | (tag, var, branch) <- branches]
+eval1 (Case t branches) =
+  case t of
+    Record fields ->
+      case findMatchingBranch fields branches of
+        Just (var, value, branch) -> Just (subst var value branch)
+        Nothing -> Nothing
+    _ -> case eval1 t of
+           Just t' -> Just (Case t' branches)
+           Nothing -> Nothing
+  where
+    findMatchingBranch :: [(String, Term)] -> [(String, String, Term)] -> Maybe (String, Term, Term)
+    findMatchingBranch _ [] = Nothing
+    findMatchingBranch fields ((tag, var, branch):rest) =
+      case lookup tag fields of
+        Just value -> Just (var, value, branch)
+        Nothing -> findMatchingBranch fields rest
+
 
 diverge :: Type -> Term 
 diverge t = 
@@ -143,17 +189,20 @@ extendedDType =  TRec "X" (TRecord[
     ("bool", TAns)
     ])
 
-ifElseD :: Term 
+ifElseD :: Term
 ifElseD = Lam "if" extendedDType
     (Lam "then" extendedDType
         (Lam "else" extendedDType
-            (App
-                (App
-                    (Lam "bool" TAns
-                        (If (Var "bool") (Var "then") (Var "else")))
-                    (Lam "other" TUnit
-                        (App (diverge extendedDType) Unit)))
-                (Unfold (Var "if")))))
+            (Case
+                (Unfold (Var "if"))
+                [
+                    ("bool", "b", If (Var "b") (Var "then") (Var "else")),
+                    ("nat", "n", App (diverge extendedDType) Unit),
+                    ("fn", "f", App (diverge extendedDType) Unit)
+                ]
+            )
+        )
+    )
 
 flsD :: Term
 flsD = Fold extendedDType (Record [("bool", No)])
@@ -176,6 +225,19 @@ ifFalse2 = App
 
 ```
 
+Also had to add a Case term to check and extract the Record fields. 
+
+Results of evaluating ifFalse1 and ifFalse2
+```
+ghci> eval ifFalse1
+Fold (TRec "X" (TRecord [("nat",TNat),("fn",TArrow (TVar "X") (TVar "X")),("bool",TAns)])) (Record [("nat",Zero)]) 
+-- Returns <nat=0>
+
+ghci> eval ifFalse2
+Fold (TRec "X" (TRecord [("nat",TNat),("fn",TArrow (TVar "X") (TVar "X")),("bool",TAns)])) (Record [("bool",No)])
+-- Returns <bool=false>. In my TypedLC, Yes represents True and No, False. 
+```
+
 ### 21.5.2 
 - $S_f$ and $S$ are invertible. Invertibility depends on the structure of the generating form, not the domain. $S_f$ and $S$ have identical rule structures. 
     - Case 1: {${(T,Top) | T \in T_f}$} - Since case 1 doesn't rely on $R$, the generating set is $\emptyset$. 
@@ -189,6 +251,7 @@ ifFalse2 = App
         - $\uparrow$ otherwise 
 
 ### 21.5.6
+
 
 ### 21.5.13 
 #### Prove - If $lfp_f(X)$ = true, then $X \subseteq \mu F$

@@ -2,6 +2,7 @@ module TypedLC where
 import qualified Data.Set as Set
 import Debug.Trace
 import qualified Data.Map as Map
+import Data.Maybe (isJust, catMaybes)
 data Type = TBool 
     | TArrow Type Type
     | TUnit
@@ -39,6 +40,7 @@ data Term = Var String
           | Fold Type Term
           | Unfold Term
           | Fix Term
+          | Case Term [(String, String, Term)]
           deriving (Show, Eq)
 
 nat :: Int -> Term
@@ -137,6 +139,21 @@ typeOf ctx (Fix t) =
     case typeOf ctx t of
         Just (TArrow t1 t2) | t1 == t2 -> Just t1
         _ -> Nothing
+typeOf ctx (Case t branches) = 
+  case typeOf ctx t of
+    Just (TRecord fields) ->
+      let branchTypes = map (\(tag, var, branch) -> 
+                             case lookup tag fields of
+                               Just fieldType -> 
+                                 typeOf (extendContext var fieldType ctx) branch
+                               Nothing -> Nothing) branches
+      in if all isJust branchTypes && allEqual (catMaybes branchTypes)
+         then Just (head (catMaybes branchTypes)) 
+         else Nothing
+    _ -> Nothing
+  where
+    allEqual [] = True
+    allEqual (x:xs) = all (== x) xs
 
 typeOfStore :: Context -> StoreContext -> Term -> Maybe Type
 typeOfStore ctx storeCtx (Loc s) = case lookupStoreType s storeCtx of
@@ -234,6 +251,10 @@ freeVars (Loc _) = Set.empty
 freeVars (Fold _ t) = freeVars t
 freeVars (Unfold t) = freeVars t
 freeVars (Fix t) = freeVars t
+freeVars (Case t branches) = 
+    Set.union 
+        (freeVars t)
+        (Set.unions [Set.delete var (freeVars branch) | (tag, var, branch) <- branches])
 
 freshVar :: String -> Set.Set String -> String
 freshVar x vars = head $ filter (\v -> Set.notMember v vars) $ map (\n -> x ++ replicate n '\'') [1..]
@@ -267,6 +288,15 @@ subst x s (If t1 t2 t3) = If (subst x s t1) (subst x s t2) (subst x s t3)
 subst x s (Fold typ t) = Fold typ (subst x s t)
 subst x s (Unfold t) = Unfold (subst x s t)
 subst x s (Fix t) = Fix (subst x s t)
+subst x s (Case t branches) =
+    Case (subst x s t)
+        [(tag, var, if x == var 
+                    then branch 
+                    else if Set.member var (freeVars s)
+                         then let fresh = freshVar var (freeVars s)
+                              in subst x s (subst var (Var fresh) branch)
+                         else subst x s branch) 
+         | (tag, var, branch) <- branches]
 subst _ _ Zero = Zero
 subst _ _ Yes = Yes
 subst _ _ No = No
@@ -299,6 +329,7 @@ isVal (Pair _ _) = True
 isVal Zero = True
 isVal (Succ t) | isVal t = True
 isVal (Fold _ v) | isVal v = True
+isVal (Record _) = True
 isVal _ = False 
 
 -- call by value strategy
@@ -311,7 +342,7 @@ eval1 (App t1 t2) = case t1 of
         Just t1' -> Just (App t1' t2)
         Nothing -> case eval1 t2 of 
             Just t2' | isVal t1 -> Just (App t1 t2')
-            Nothing -> Nothing
+            _ -> Nothing
 eval1 (Succ t) = case eval1 t of
     Just t' -> Just (Succ t') 
     Nothing -> Nothing
@@ -346,7 +377,24 @@ eval1 (Fix t) = case t of
     _ -> case eval1 t of
         Just t' -> Just (Fix t')
         Nothing -> Nothing
+eval1 (Case t branches) =
+  case t of
+    Record fields ->
+      case findMatchingBranch fields branches of
+        Just (var, value, branch) -> Just (subst var value branch)
+        Nothing -> Nothing
+    _ -> case eval1 t of
+           Just t' -> Just (Case t' branches)
+           Nothing -> Nothing
+  where
+    findMatchingBranch :: [(String, Term)] -> [(String, String, Term)] -> Maybe (String, Term, Term)
+    findMatchingBranch _ [] = Nothing
+    findMatchingBranch fields ((tag, var, branch):rest) =
+      case lookup tag fields of
+        Just value -> Just (var, value, branch)
+        Nothing -> findMatchingBranch fields rest
 eval1 _ = Nothing
+
 -- head reduction strategy for Tait's method 
 eval1head :: Term -> Maybe Term
 eval1head (Proj1(Pair m1 m2)) = Just m1
@@ -364,7 +412,7 @@ eval1head (App m1 m2) = case eval1head m1 of
 eval1head _ = Nothing
 
 eval :: Term -> Term
-eval t = case eval1 $ traceShowId t of
+eval t = case eval1 t of
     Nothing -> t 
     Just t' -> eval t'
 
@@ -663,8 +711,8 @@ sucD = Lam "f" extendedDType
 zroD :: Term
 zroD = Fold extendedDType (Record[("nat", Zero)])
 
-ifElseD :: Term 
-ifElseD = Lam "if" extendedDType
+ifElseDOld :: Term 
+ifElseDOld = Lam "if" extendedDType
     (Lam "then" extendedDType
         (Lam "else" extendedDType
             (App
@@ -675,6 +723,21 @@ ifElseD = Lam "if" extendedDType
                         (App (diverge extendedDType) Unit)))
                 (Unfold (Var "if")))))
 
+ifElseD :: Term
+ifElseD = Lam "if" extendedDType
+    (Lam "then" extendedDType
+        (Lam "else" extendedDType
+            (Case
+                (Unfold (Var "if"))
+                [
+                    ("bool", "b", If (Var "b") (Var "then") (Var "else")),
+                    ("nat", "n", App (diverge extendedDType) Unit),
+                    ("fn", "f", App (diverge extendedDType) Unit)
+                ]
+            )
+        )
+    )
+
 -- if false then 1 else 0 
 ifFalse1 :: Term 
 ifFalse1 = App
@@ -682,6 +745,8 @@ ifFalse1 = App
         (App ifElseD flsD)
         (Fold extendedDType (Record[("nat", nat 1)])))
     (Fold extendedDType (Record[("nat", Zero)]))
+-- ghci> eval ifFalse1
+-- Fold (TRec "X" (TRecord [("nat",TNat),("fn",TArrow (TVar "X") (TVar "X")),("bool",TAns)])) (Record [("nat",Zero)])
 
 -- if false then 1 else false 
 ifFalse2 :: Term 
@@ -690,3 +755,5 @@ ifFalse2 = App
         (App ifElseD flsD)
         (Fold extendedDType (Record[("nat", nat 1)])))
     (flsD)
+-- ghci> eval ifFalse2
+-- Fold (TRec "X" (TRecord [("nat",TNat),("fn",TArrow (TVar "X") (TVar "X")),("bool",TAns)])) (Record [("bool",No)])
