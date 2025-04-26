@@ -11,7 +11,7 @@ dist-newstyle/
 *.chi
 *.chs.h
 .stack-work/
-
+stack.yaml.lock
 # Cabal file (if using hpack/package.yaml)
 # Uncomment this if you're using package.yaml to generate it
 # tapl.cabal
