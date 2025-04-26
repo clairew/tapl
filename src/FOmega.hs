@@ -178,5 +178,28 @@ typeEquiv tyS tyT =
         (TApp s1 s2, TApp t1 t2) ->
             typeEquiv s1 t1 && typeEquiv s2 t2
         _ -> False
-            
+
+kindOf :: Context -> Type -> Maybe Kind 
+kindOf ctx (TVar v) = lookupTypeVarKind v ctx
+kindOf ctx (TArrow t1 t2) = do
+    k1 <- kindOf ctx t1
+    k2 <- kindOf ctx t2 
+    if k1 == KStar && k2 == KStar
+        then return KStar
+        else Nothing
+kindOf ctx (TApp t1 t2) = do 
+    k1 <- kindOf ctx t1 
+    k2 <- kindOf ctx t2 
+    case k1 of
+        KArrow k1' k2' -> if k1' == k2 then return k2' else Nothing
+        _ -> Nothing
+kindOf ctx (TAbs v k1 typ) = do 
+    let extended = extendTypeVar v k1 ctx
+    k2 <- kindOf extended typ 
+    return (KArrow k1 k2)
+kindOf ctx (TForall x typ) = do
+    let extended = extendTypeVar x KStar ctx 
+    k <- kindOf extended typ
+    if k == KStar then return KStar else Nothing
+
 
