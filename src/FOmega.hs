@@ -202,4 +202,52 @@ kindOf ctx (TForall x typ) = do
     k <- kindOf extended typ
     if k == KStar then return KStar else Nothing
 
+typeOf :: Context -> Term -> Maybe Type
+typeOf ctx (Var v) = lookupVar v ctx
+typeOf ctx (Lam x t1 e) = do 
+    k <- kindOf ctx t1
+    if k /= KStar then Nothing else do 
+            let ctx' = extendContext x t1 ctx
+            t2 <- typeOf ctx' e 
+            return $ TArrow t1 t2
+typeOf ctx (App t1 t2) = do 
+    t1' <- typeOf ctx t1 
+    t2' <- typeOf ctx t2
+    case simplifyType t1' of 
+        TArrow t11 t12 -> 
+            if typeEquiv t11 t2' then return t2'
+                else Nothing
+typeOf ctx (TyAbs v k t) = do
+    let extended = extendTypeVar v k ctx 
+    t' <- typeOf extended t 
+    return $ TForall v t'
+typeOf ctx (TyApp t typ) = 
+    case kindOf ctx typ of
+        Just k -> do 
+            t' <- typeOf ctx t
+            case simplifyType t' of 
+                TForall v body -> return $ substType v typ body
+                _ -> Nothing
 
+parallelReduce :: Type -> Type
+parallelReduce (TVar x) = TVar x 
+parallelReduce (TArrow t1 t2) = TArrow (parallelReduce t1) (parallelReduce t2) 
+parallelReduce (TForall x t) = TForall x (parallelReduce t) 
+parallelReduce (TAbs x k t) = TAbs x k (parallelReduce t)
+parallelReduce (TApp (TAbs x _ t) arg) = substType x (parallelReduce arg) (parallelReduce t) 
+parallelReduce (TApp t1 t2) = TApp (parallelReduce t1) (parallelReduce t2)
+
+typeEquivParallel :: Type -> Type -> Bool 
+typeEquivParallel s t = 
+    let s' = parallelReduce s 
+        t' = parallelReduce t 
+    in if s == t then True else
+        if s == s' && t == t' then False 
+            else typeEquivParallel s' t'
+
+normalizeParallel :: Type -> Type 
+normalizeParallel t = 
+    let t' = parallelReduce t 
+    in if t == t' then t 
+        else normalizeParallel t'
+        
