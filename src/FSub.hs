@@ -281,8 +281,8 @@ isSubtype _ s TTop = True
 isSubtype _ v t | v == t = True
 isSubtype ctx (TVar a) t = 
     case lookupTypeVar a ctx of
-        Just bound -> isSubtype ctx bound t 
-        Nothing -> False
+        Just bound -> if bound == t then True else isSubtype ctx bound t 
+        Nothing -> TVar a == t
 isSubtype ctx (TArrow s1 s2) (TArrow t1 t2) = isSubtype ctx t1 s1 && isSubtype ctx s2 t2    
 isSubtype ctx (TForall a1 s1 s2) (TForall b1 t1 t2) = 
     isSubtype ctx t1 s1 && 
