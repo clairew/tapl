@@ -265,3 +265,10 @@ isSubtypeSameKind ctx (TForall x1 b1 s2) (TForall x2 b2 t2) =
         t2' = substType x2 (TVar fresh) t2
     in isSubtype extended s2' t2'
     else False
+isSubtypeSameKind ctx (TAbs x1 k1 s2) (TAbs x2 k2 t2) = 
+        let fresh = freshVar x1 (Set.union (freeTypeVars s2) (freeTypeVars t2))        
+            extended = extendTypeVarBound fresh k1 TTop ctx
+            s2' = substType x1 (TVar fresh) s2 
+            t2' = substType x2 (TVar fresh) t2 
+        in isSubtype extended s2' t2'
+isSubtypeSameKind ctx (TApp s1 s2) (TApp t1 t2) = isSubtype ctx s1 t1 && isSubtype ctx s2 t2
