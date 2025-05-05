@@ -130,23 +130,19 @@ isVal :: Term -> Bool
 isVal (Lam _ _ _) = True
 isVal (TyAbs _ _ _) = True
 isVal (Var _) = True
+isVal _ = False
 
 eval1 :: Term -> Maybe Term
-eval1 (App t1 t2) = case eval1 t1 of
-    Just t1' -> Just (App t1' t2)
-    Nothing -> if isVal t1
-        then App t1 <$> eval1 t2
-        else Nothing
 eval1 (App (Lam x typ body) v2) | isVal v2 = Just (substTerm x v2 body)
 eval1 (App t1 t2) = case eval1 t1 of
     Just t1' -> Just (App t1' t2)
     Nothing -> if isVal t1 
         then App t1 <$> eval1 t2
         else Nothing
+eval1 (TyApp (TyAbs x k body) typ) = Just (substTypeInTerm x typ body)
 eval1 (TyApp t typ) = case eval1 t of
     Just t' -> Just (TyApp t' typ)
     Nothing -> Nothing
-eval1 (TyApp (TyAbs x k body) typ) = Just (substTypeInTerm x typ body)
 eval1 _ = Nothing
 
 eval :: Term -> Term
@@ -168,20 +164,24 @@ simplifyType tyT =
          Nothing -> tyT'
 
 typeEquiv :: Type -> Type -> Bool
-typeEquiv tyS tyT = 
+typeEquiv tyS tyT =
     let tyS' = simplifyType tyS
         tyT' = simplifyType tyT
-    in case (tyS', tyT') of 
+    in case (tyS', tyT') of
         (TVar i, TVar j) -> i == j
-        (TArrow s1 s2, TArrow t1 t2) -> typeEquiv s1 t1 && typeEquiv s2 t2 
-        (TForall x1 b1 s2, TForall x2 b2 t2) ->
-            typeEquiv b1 b2 && 
-            let t2' = substType x2 (TVar x1) t2 
-            in typeEquiv s2 t2'
-        (TAbs x1 k1 t1, TAbs x2 k2 t2) -> 
-            k1 == k2 && typeEquiv t1 (substType x2 (TVar x1) t2)
+        (TArrow s1 s2, TArrow t1 t2) -> typeEquiv s1 t1 && typeEquiv s2 t2
+        (TForall x1 s1 s2, TForall x2 t1 t2) ->
+            x1 == x2 &&
+            let t1' = substType x2 (TVar x1) s1 
+                t2' = substType x2 (TVar x1) s2 
+            in typeEquiv s1 t1' && typeEquiv s2 t2' 
+        (TAbs x1 k1 t1, TAbs x2 k2 t2) ->
+            k1 == k2 &&
+            if x1 == x2 then typeEquiv t1 t2
+            else typeEquiv t1 (substType x2 (TVar x1) t2)
         (TApp s1 s2, TApp t1 t2) ->
             typeEquiv s1 t1 && typeEquiv s2 t2
+        (TTop, TTop) -> True
         _ -> False
 
 kindOf :: Context -> Type -> Maybe Kind 
@@ -251,6 +251,7 @@ isSubtype ctx t1 t2 =
 isSubtypeSameKind :: Context -> Type -> Type -> Bool 
 isSubtypeSameKind ctx s TTop = let s' = kindOf ctx s 
     in s' == Just KStar
+isSubtypeSameKind ctx s t | typeEquiv s t = True
 isSubtypeSameKind ctx (TArrow s1 s2) (TArrow t1 t2) = 
     isSubtype ctx t1 s1 && isSubtype ctx s2 t2
 isSubtypeSameKind ctx (TVar x) t = 
@@ -258,17 +259,17 @@ isSubtypeSameKind ctx (TVar x) t =
         Just bound -> if bound == t then True else isSubtype ctx bound t 
         Nothing -> TVar x == t
 isSubtypeSameKind ctx (TForall x1 b1 s2) (TForall x2 b2 t2) =
-    if typeEquiv b1 b2 then
-    let fresh = freshVar x1 (Set.union (freeTypeVars s2) (freeTypeVars t2))
-        extended = extendTypeVarBound fresh b1 KStar ctx
-        s2' = substType x1 (TVar fresh) s2 
-        t2' = substType x2 (TVar fresh) t2
-    in isSubtype extended s2' t2'
-    else False
+       typeEquiv b1 b2 &&
+        let fresh = freshVar x1 (Set.union (freeTypeVars s2) (freeTypeVars t2))
+            extended = extendTypeVarBound fresh b1 KStar ctx
+            s2' = substType x1 (TVar fresh) s2 
+            t2' = substType x2 (TVar fresh) t2
+    in isSubtype extended s2' t2' 
 isSubtypeSameKind ctx (TAbs x1 k1 s2) (TAbs x2 k2 t2) = 
         let fresh = freshVar x1 (Set.union (freeTypeVars s2) (freeTypeVars t2))        
-            extended = extendTypeVarBound fresh k1 TTop ctx
+            extended = extendTypeVarBound fresh TTop k1 ctx
             s2' = substType x1 (TVar fresh) s2 
             t2' = substType x2 (TVar fresh) t2 
         in isSubtype extended s2' t2'
 isSubtypeSameKind ctx (TApp s1 s2) (TApp t1 t2) = isSubtype ctx s1 t1 && isSubtype ctx s2 t2
+isSubtypeSameKind ctx _ _ = False
