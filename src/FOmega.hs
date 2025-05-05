@@ -113,7 +113,7 @@ substTerm x s (Lam v t u)
      if Set.notMember v $ freeTermVars s
          then Lam v t (substTerm x s u)
      else
-         let fresh = freshVar x (Set.union(freeTermVars s) (freeTermVars u))
+         let fresh = freshVar v (Set.union(freeTermVars s) (freeTermVars u))
          in Lam fresh t (substTerm x s (substTerm v (Var fresh) u))
 substTerm x s (TyAbs v k t) =
  if Set.notMember x $ freeTermVars t
@@ -126,23 +126,20 @@ isVal :: Term -> Bool
 isVal (Lam _ _ _) = True
 isVal (TyAbs _ _ _) = True
 isVal (Var _) = True
+isVal (App _ _) = False
+isVal (TyApp _ _) = False
 
 eval1 :: Term -> Maybe Term
+eval1 (App (Lam x typ body) v2) | isVal v2 = Just (substTerm x v2 body)
 eval1 (App t1 t2) = case eval1 t1 of
     Just t1' -> Just (App t1' t2)
     Nothing -> if isVal t1
         then App t1 <$> eval1 t2
         else Nothing
-eval1 (App (Lam x typ body) v2) | isVal v2 = Just (substTerm x v2 body)
-eval1 (App t1 t2) = case eval1 t1 of
-    Just t1' -> Just (App t1' t2)
-    Nothing -> if isVal t1 
-        then App t1 <$> eval1 t2
-        else Nothing
+eval1 (TyApp (TyAbs x k body) typ) = Just (substTypeInTerm x typ body)
 eval1 (TyApp t typ) = case eval1 t of
     Just t' -> Just (TyApp t' typ)
     Nothing -> Nothing
-eval1 (TyApp (TyAbs x k body) typ) = Just (substTypeInTerm x typ body)
 eval1 _ = Nothing
 
 eval :: Term -> Term
@@ -154,11 +151,14 @@ computeType :: Type -> Maybe Type
 computeType (TApp (TAbs x _ body) arg) = Just (substType x arg body)
 computeType _ = Nothing
 
-simplifyType :: Type -> Type 
-simplifyType tyT = 
+simplifyType :: Type -> Type
+simplifyType tyT =
     let tyT' = case tyT of
-                 TApp t1 t2 -> TApp (simplifyType t1) t2
-                 _ -> tyT
+                 TVar x -> TVar x
+                 TArrow t1 t2 -> TArrow (simplifyType t1) (simplifyType t2)
+                 TForall x t -> TForall x (simplifyType t)
+                 TAbs x k t -> TAbs x k (simplifyType t)
+                 TApp t1 t2 -> TApp (simplifyType t1) (simplifyType t2)
     in case computeType tyT' of
          Just tyT'' -> simplifyType tyT''
          Nothing -> tyT'
@@ -217,6 +217,7 @@ typeOf ctx (App t1 t2) = do
         TArrow t11 t12 -> 
             if typeEquiv t11 t2' then return t2'
                 else Nothing
+        _ -> Nothing
 typeOf ctx (TyAbs v k t) = do
     let extended = extendTypeVar v k ctx 
     t' <- typeOf extended t 
@@ -249,5 +250,4 @@ normalizeParallel :: Type -> Type
 normalizeParallel t = 
     let t' = parallelReduce t 
     in if t == t' then t 
-        else normalizeParallel t'
-        
+        else normalizeParallel t' 

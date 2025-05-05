@@ -154,11 +154,15 @@ computeType :: Type -> Maybe Type
 computeType (TApp (TAbs x _ body) arg) = Just (substType x arg body)
 computeType _ = Nothing
 
-simplifyType :: Type -> Type 
-simplifyType tyT = 
+simplifyType :: Type -> Type
+simplifyType tyT =
     let tyT' = case tyT of
-                 TApp t1 t2 -> TApp (simplifyType t1) t2
-                 _ -> tyT
+                 TVar x -> TVar x
+                 TArrow t1 t2 -> TArrow (simplifyType t1) (simplifyType t2)
+                 TForall x bound t -> TForall x (simplifyType bound) (simplifyType t)
+                 TAbs x k t -> TAbs x k (simplifyType t)
+                 TApp t1 t2 -> TApp (simplifyType t1) (simplifyType t2)
+                 TTop -> TTop
     in case computeType tyT' of
          Just tyT'' -> simplifyType tyT''
          Nothing -> tyT'
