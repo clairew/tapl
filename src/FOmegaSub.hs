@@ -62,6 +62,7 @@ freeTypeVars (TArrow t1 t2) = Set.union (freeTypeVars t1) (freeTypeVars t2)
 freeTypeVars (TForall a _ t) = Set.delete a (freeTypeVars t)
 freeTypeVars (TApp t1 t2) = Set.union (freeTypeVars t1) (freeTypeVars t2)
 freeTypeVars (TAbs a _ t) = Set.delete a (freeTypeVars t)
+freeTypeVars TTop = Set.empty
 
 freeTermVars :: Term -> Set.Set String
 freeTermVars (Var x) = Set.singleton x
@@ -86,6 +87,7 @@ substType a s (TAbs v k t)
         else let fresh = freshVar v (Set.union (freeTypeVars t) (freeTypeVars s))
         in TAbs fresh k (substType a s (substType v (TVar fresh) t))
 substType a s (TApp t1 t2) = TApp (substType a s t1) (substType a s t2)
+substType a s TTop = TTop
 
 substTypeInTerm :: String -> Type -> Term -> Term
 substTypeInTerm a s (Var x) = Var x
@@ -175,10 +177,11 @@ typeEquiv tyS tyT =
         (TVar i, TVar j) -> i == j
         (TArrow s1 s2, TArrow t1 t2) -> typeEquiv s1 t1 && typeEquiv s2 t2
         (TForall x1 s1 s2, TForall x2 t1 t2) ->
-            x1 == x2 &&
-            let t1' = substType x2 (TVar x1) s1 
-                t2' = substType x2 (TVar x1) s2 
-            in typeEquiv s1 t1' && typeEquiv s2 t2' 
+            typeEquiv s1 t1 && 
+            let fresh = freshVar x1 (Set.union (freeTypeVars s2) (freeTypeVars t2))
+                s2' = substType x1 (TVar fresh) s2
+                t2' = substType x2 (TVar fresh) t2
+            in typeEquiv s2' t2' 
         (TAbs x1 k1 t1, TAbs x2 k2 t2) ->
             k1 == k2 &&
             if x1 == x2 then typeEquiv t1 t2
@@ -227,22 +230,22 @@ typeOf ctx (App t1 t2) = do
         TArrow t11 t12 -> 
             if typeEquiv t11 t2' then return t12
                 else Nothing
+        _ -> Nothing
 typeOf ctx (TyAbs x bound t) = do
     boundKind <- kindOf ctx bound 
     if boundKind /= KStar then Nothing else do 
         let ctx' = extendTypeVarBound x bound KStar ctx
         t' <- typeOf ctx' t 
         return $ TForall x bound t'
-typeOf ctx (TyApp t typ) = 
-    case kindOf ctx typ of
-        Just k -> do 
-            t' <- typeOf ctx t
-            case simplifyType t' of 
-                TForall v bound body -> 
-                    if isSubtype ctx typ bound
-                        then return $ substType v typ body
-                        else Nothing
-                _ -> Nothing
+typeOf ctx (TyApp t typ) = do
+    typeKind <- kindOf ctx typ
+    t' <- typeOf ctx t
+    case simplifyType t' of
+        TForall v bound body ->
+            if isSubtype ctx typ bound
+                then return $ substType v typ body
+                else Nothing
+        _ -> Nothing
 
 isSubtype :: Context -> Type -> Type -> Bool
 isSubtype ctx t1 t2 = 
