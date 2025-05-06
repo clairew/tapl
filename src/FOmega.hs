@@ -223,13 +223,17 @@ typeOf ctx (TyAbs v k t) = do
     let extended = extendTypeVar v k ctx 
     t' <- typeOf extended t 
     return $ TForall v t'
-typeOf ctx (TyApp t typ) = 
-    case kindOf ctx typ of
-        Just k -> do 
-            t' <- typeOf ctx t
-            case simplifyType t' of 
-                TForall v body -> return $ substType v typ body
-                _ -> Nothing
+typeOf ctx (TyApp t typ) = do
+    kArg <- kindOf ctx typ
+    t' <- typeOf ctx t  
+    case simplifyType t' of
+        TForall v body -> do 
+            case lookupTypeVarKind v ctx of
+                Just kExpected -> if kArg == kExpected
+                    then return $ substType v typ body
+                    else Nothing 
+                Nothing -> Nothing
+        _ -> Nothing
 
 parallelReduce :: Type -> Type
 parallelReduce (TVar x) = TVar x 
